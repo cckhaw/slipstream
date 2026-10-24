@@ -123,7 +123,7 @@ export default {
         // Progressive enhancement: true continuous-curvature corners where supported.
         '.squircle': { 'corner-shape': 'squircle' },
 
-        // ---- Chunky game UI (Minecraft bevels, Roblox buttons, Among Us outlines) ----
+        // ---- Chunky game UI: bevels, heavy outlines, press-down buttons ----
         // Ink outline + top highlight + bottom shade + hard drop that "presses" on tap.
         '.chunk': {
           border: '3px solid #05070C',
@@ -140,7 +140,7 @@ export default {
         '.btn-gold': { background: 'linear-gradient(#FFE27A,#F5A623)', color: '#3A2300' },
         '.btn-pink': { background: 'linear-gradient(#FF7A9C,#E01E52)', color: '#fff' },
         '.btn-dark': { background: 'linear-gradient(#3A4A7C,#27345C)', color: '#fff' },
-        // Large rounded panel with a double outline, like an Among Us task window.
+        // Large rounded panel with a double outline.
         '.panel': {
           background: 'linear-gradient(#27325A,#1A2342)',
           border: '3px solid #05070C',
@@ -164,7 +164,7 @@ export default {
           'paint-order': 'stroke fill',
           'text-shadow': '0 5px 0 #05070C',
         },
-        // Blocky Minecraft-style wordmark.
+        // Blocky monospace wordmark.
         '.title-pixel': {
           'font-family': "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
           'font-weight': '900',
