@@ -1,6 +1,6 @@
-// Slipstream game engine: physics, spawning, collisions and Canvas rendering.
-// Framework-agnostic. React talks to it through a handful of methods and an
-// `onEvent(name, data)` hook.
+// Slipstream game engine: physics, spawning, collisions and the main loop.
+// Rendering lives in render2d.js / render3d.js; this file is framework-agnostic.
+// React talks to it through a handful of methods and an `onEvent(name, data)` hook.
 //
 // Modes:
 //   idle      - menu backdrop, orb coasts on the floor
@@ -8,19 +8,17 @@
 //   playing   - live run
 //   over      - crash animation, then emits 'gameover'
 
-export const COLORS = {
-  bg: '#0A0D14',
-  orb: '#00F5D4',
-  slip: '#FF2D55',
-  gold: '#FF9500',
-  danger: '#FF3B30',
-}
+import { COLORS } from './constants.js'
+import { getWorld } from './worlds.js'
+import { Renderer2D } from './render2d.js'
+
+export { COLORS }
 
 const TAU = Math.PI * 2
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 const rand = (a, b) => a + Math.random() * (b - a)
 
-// Physics tuning (px / s, scaled by the layout factor `s`).
+// Physics tuning (px / s, scaled by the layout factor `s` and the world rules).
 const G_AIR = 1500
 const G_HOLD = 4600 // holding in mid-air dives the orb back to the floor
 const LAUNCH_BASE = 620
@@ -42,15 +40,17 @@ const haptic = (p) => {
 }
 
 export class Engine {
-  constructor(canvas, hooks = {}) {
-    this.canvas = canvas
-    this.ctx = canvas.getContext('2d')
+  constructor(canvases, hooks = {}) {
+    this.canvas2d = canvases.c2d
+    this.canvas3d = canvases.c3d
+    this.host = this.canvas2d.parentElement
     this.hooks = hooks
     this.audio = hooks.audio
     this.holding = false
     this.userPaused = false
     this.clock = 0
     this.mode = 'idle'
+    this.playerColor = '#00F5D4'
     this.reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     this.streaks = Array.from({ length: 14 }, () => ({
       x: Math.random(),
@@ -58,6 +58,12 @@ export class Engine {
       len: rand(0.05, 0.16),
       v: rand(1.4, 2.6),
     }))
+
+    this.world = getWorld('neon')
+    this.rules = this.world.rules
+    this.r2d = new Renderer2D(this, this.canvas2d)
+    this.r3d = null
+    this.renderer = this.r2d
 
     this.handleResize = () => this.resize()
     window.addEventListener('resize', this.handleResize)
@@ -72,28 +78,51 @@ export class Engine {
     cancelAnimationFrame(this.raf)
     window.removeEventListener('resize', this.handleResize)
     this.audio?.ride(false, 0)
+    this.r3d?.dispose()
   }
 
   emit(name, data) {
     this.hooks.onEvent?.(name, data)
   }
 
+  // ---- worlds --------------------------------------------------------------
+
+  // Switch world (and renderer). 3D worlds load three.js on first use.
+  async setWorld(id) {
+    const w = getWorld(id)
+    if (w.kind === '3d') {
+      if (!this.r3d) {
+        const { Renderer3D } = await import('./render3d.js')
+        this.r3d = new Renderer3D(this, this.canvas3d)
+      }
+      this.renderer = this.r3d
+    } else {
+      this.renderer = this.r2d
+    }
+    this.world = w
+    this.rules = w.rules
+    this.canvas2d.style.display = w.kind === '3d' ? 'none' : 'block'
+    this.canvas3d.style.display = w.kind === '3d' ? 'block' : 'none'
+    this.resize()
+    this.renderer.setWorld?.(w)
+  }
+
   // ---- layout --------------------------------------------------------------
 
   resize() {
-    const w = this.canvas.clientWidth || window.innerWidth
-    const h = this.canvas.clientHeight || window.innerHeight
+    const w = this.host.clientWidth || window.innerWidth
+    const h = this.host.clientHeight || window.innerHeight
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     this.W = w
     this.H = h
     this.dpr = dpr
-    this.canvas.width = Math.round(w * dpr)
-    this.canvas.height = Math.round(h * dpr)
     this.s = clamp(Math.min(h / 780, w / 390), 0.75, 1.35)
     this.r = 14 * this.s
     this.floorH = 96 * this.s
     this.floorTop = h - this.floorH
     this.orbX = w * 0.26
+    this.r2d.resize(w, h, dpr)
+    this.r3d?.resize(w, h, dpr)
     this.hooks.onResize?.({ floorTop: this.floorTop, floorH: this.floorH, s: this.s, W: w, H: h })
   }
 
@@ -111,16 +140,15 @@ export class Engine {
     this.score = 0
     this.charge = 0
     this.vy = 0
+    this.spin = 0
     this.grounded = true
     this.y = this.floorY
     this.obstacles = []
     this.particles = []
-    this.popups = []
     this.speed = 0
     this.spawnTimer = 1.6
     this.runTime = 0
     this.lastLevel = 1
-    this.lastType = null
     this.overTimer = 0
     this.overSent = false
     this.releaseBuffer = 0
@@ -131,6 +159,7 @@ export class Engine {
     this.bgOffset = 0
     this.shake = 0
     this.flash = 0
+    this.gust = { state: 'idle', timer: 4 }
   }
 
   toIdle() {
@@ -166,7 +195,7 @@ export class Engine {
     this.mode = 'playing'
     this.holding = false
     this.userPaused = false
-    this.speed = BASE_SPEED * this.s
+    this.speed = BASE_SPEED * this.rules.speed * this.s
     this.pushHud()
   }
 
@@ -212,12 +241,15 @@ export class Engine {
     else this.releaseBuffer = 0.12 // forgiving: release just before landing still launches
   }
 
+  launchSpeed(m = this.mult) {
+    return (LAUNCH_BASE + LAUNCH_PER_MULT * (m - 1)) * this.rules.launch * this.s
+  }
+
   launch() {
-    const m = this.mult
-    this.vy = -(LAUNCH_BASE + LAUNCH_PER_MULT * (m - 1)) * this.s
+    this.vy = -this.launchSpeed()
     this.grounded = false
     this.burstAt(this.orbX, this.floorTop, 14, COLORS.slip, { up: true })
-    this.audio?.launch(m)
+    this.audio?.launch(this.mult)
     haptic(8)
   }
 
@@ -227,7 +259,7 @@ export class Engine {
     const dt = Math.min((now - this.last) / 1000, 1 / 30)
     this.last = now
     this.update(dt)
-    this.draw()
+    this.renderer.draw()
     this.raf = requestAnimationFrame(this.frame)
   }
 
@@ -254,7 +286,7 @@ export class Engine {
     let target = 0
     if (this.mode === 'idle') target = IDLE_SPEED * s
     else if (this.mode === 'playing' || this.mode === 'tutorial') {
-      target = (BASE_SPEED + SPEED_PER_MULT * (this.mult - 1)) * s
+      target = (BASE_SPEED + SPEED_PER_MULT * (this.mult - 1)) * this.rules.speed * s
     }
     this.speed += (target - this.speed) * Math.min(1, rawDt * 3)
 
@@ -276,10 +308,12 @@ export class Engine {
     if (this.mode === 'playing') {
       this.score += this.speed * sdt * 0.02 * this.mult
       this.runTime += sdt
+      this.updateGust(sdt)
       this.spawnTimer -= sdt
       if (this.spawnTimer <= 0) {
         this.spawn()
-        this.spawnTimer = rand(1.3, 2.1) - Math.min(0.25, this.runTime * 0.004)
+        const [a, b] = this.rules.gap
+        this.spawnTimer = rand(a, b) - Math.min(0.25, this.runTime * 0.004)
       }
       this.collide()
     } else if (this.mode === 'tutorial') {
@@ -307,7 +341,7 @@ export class Engine {
           life: rand(0.35, 0.6),
           max: 0.6,
           size: this.r * rand(0.35, 0.6),
-          color: riding ? COLORS.slip : COLORS.orb,
+          color: riding ? COLORS.slip : this.playerColor,
         })
       }
     }
@@ -341,13 +375,34 @@ export class Engine {
     })
   }
 
+  updateGust(sdt) {
+    if (!this.rules.gusts) return
+    const g = this.gust
+    g.timer -= sdt
+    if (g.timer > 0) return
+    if (g.state === 'idle') {
+      g.state = 'warn'
+      g.timer = 0.9
+    } else if (g.state === 'warn') {
+      g.state = 'active'
+      g.timer = 1.3
+    } else {
+      g.state = 'idle'
+      g.timer = rand(3.5, 6)
+    }
+  }
+
   stepOrb(sdt) {
     const s = this.s
     const floorY = this.floorY
+    const gm = this.rules.gravity
 
     if (!this.grounded) {
-      this.vy += (this.holding ? G_HOLD : G_AIR) * s * sdt
+      let g = (this.holding ? G_HOLD : G_AIR) * gm * s
+      if (this.gust.state === 'active' && !this.holding) g -= G_AIR * s * 0.75 // updraft
+      this.vy += g * sdt
       this.y += this.vy * sdt
+      this.spin += 7 * sdt
       if (this.y < this.r + 2) {
         this.y = this.r + 2
         if (this.vy < 0) this.vy = 0
@@ -357,6 +412,7 @@ export class Engine {
         this.y = floorY
         this.vy = 0
         this.grounded = true
+        this.spin = 0
         this.onLand(impact)
       }
     } else {
@@ -412,35 +468,77 @@ export class Engine {
     }
   }
 
-  makeObstacle(type, x, heightUnits = 0) {
+  // ---- obstacles -----------------------------------------------------------
+
+  makeObstacle(type, x, heightUnits = 0, width = rand(16, 24) * this.s) {
     return {
-      type,
+      type, // floor | wide | ceil | pit
       x,
-      w: rand(16, 24) * this.s,
+      w: width,
       hu: heightUnits,
       passed: false,
       minD: Infinity,
       seed: Math.random() * TAU,
+      amp: 0, // oscillation amplitude (px units, scaled), 0 = static
+      freq: rand(2, 3.2),
     }
+  }
+
+  // Horizontal distance (px) the orb stays above height `hPx` during a launch.
+  clearDistance(hPx, m = this.mult) {
+    const g = G_AIR * this.rules.gravity * this.s
+    const v = this.launchSpeed(m)
+    const disc = v * v - 2 * g * hPx
+    if (disc <= 0) return 0
+    return ((2 * Math.sqrt(disc)) / g) * this.speed
+  }
+
+  pickType() {
+    const { weights, after } = this.rules
+    const entries = Object.entries(weights).filter(([t]) => !after[t] || this.runTime >= after[t])
+    let total = entries.reduce((a, [, w]) => a + w, 0)
+    let roll = Math.random() * total
+    for (const [t, w] of entries) {
+      roll -= w
+      if (roll <= 0) return t
+    }
+    return 'floor'
   }
 
   spawn() {
+    const s = this.s
     const m = this.mult
-    const ceilOK = this.runTime > 10
-    const type = ceilOK && Math.random() < 0.34 ? 'ceil' : 'floor'
-    const hu = type === 'floor' ? Math.min(rand(44, 70) + (m - 1) * 2.2, 92) : 0
-    const x = this.W + Math.max(this.speed * 0.55, 120 * this.s)
-    this.obstacles.push(this.makeObstacle(type, x, hu))
-    this.lastType = type
+    let type = this.pickType()
+    const x = this.W + Math.max(this.speed * this.rules.lead, 120 * s)
+    let hu = 0
+    let w
+    if (type === 'floor' || type === 'wide') {
+      hu = Math.min(rand(44, 70) + (m - 1) * 2.2, 92)
+      if (type === 'wide') {
+        // A long wall: width limited to what a launch can actually clear.
+        const reach = this.clearDistance(hu * s + this.r, Math.min(m, 3)) * 0.6
+        if (reach < 90 * s) type = 'floor'
+        else w = clamp(rand(0.4, 1) * reach, 56 * s, 130 * s)
+      }
+    } else if (type === 'pit') {
+      const air = ((2 * this.launchSpeed(Math.min(m, 3))) / (G_AIR * this.rules.gravity * this.s)) * this.speed
+      w = clamp(rand(0.35, 0.62) * air, 56 * s, 210 * s)
+    }
+    const o = this.makeObstacle(type, x, hu, w)
+    if ((type === 'floor' || type === 'ceil') && Math.random() < this.rules.moving) o.amp = rand(8, 16)
+    this.obstacles.push(o)
   }
 
   rectOf(o) {
-    if (o.type === 'floor') {
-      const h = o.hu * this.s
+    const s = this.s
+    const osc = o.amp ? o.amp * s * Math.sin(this.clock * o.freq + o.seed) : 0
+    if (o.type === 'floor' || o.type === 'wide') {
+      const h = o.hu * s + osc
       return { x: o.x, y: this.floorTop - h, w: o.w, h }
     }
+    if (o.type === 'pit') return { x: o.x, y: this.floorTop, w: o.w, h: this.floorH }
     // Ceiling barrier: the grounded orb just fits underneath; jumping hits it.
-    const bottom = this.floorTop - this.r * 2 - 24 * this.s
+    const bottom = this.floorTop - this.r * 2 - 24 * s - osc
     return { x: o.x, y: 0, w: o.w, h: bottom }
   }
 
@@ -450,13 +548,21 @@ export class Engine {
     const r = this.r
     for (const o of this.obstacles) {
       const rc = this.rectOf(o)
-      const nx = clamp(cx, rc.x, rc.x + rc.w)
-      const ny = clamp(cy, rc.y, rc.y + rc.h)
-      const d = Math.hypot(cx - nx, cy - ny)
-      if (Math.abs(rc.x + rc.w / 2 - cx) < rc.w / 2 + r * 3) o.minD = Math.min(o.minD, d - r)
-      if (d < r * 0.82) {
-        this.crash()
-        return
+      if (o.type === 'pit') {
+        // Falling in: on (or skimming) the floor while over the gap.
+        if (cy >= this.floorY - r * 0.35 && cx > rc.x + r * 0.3 && cx < rc.x + rc.w - r * 0.3) {
+          this.crash(o)
+          return
+        }
+      } else {
+        const nx = clamp(cx, rc.x, rc.x + rc.w)
+        const ny = clamp(cy, rc.y, rc.y + rc.h)
+        const d = Math.hypot(cx - nx, cy - ny)
+        if (Math.abs(rc.x + rc.w / 2 - cx) < rc.w / 2 + r * 3) o.minD = Math.min(o.minD, d - r)
+        if (d < r * 0.82) {
+          this.crash(o)
+          return
+        }
       }
       if (!o.passed && o.x + o.w < cx - r) {
         o.passed = true
@@ -471,22 +577,23 @@ export class Engine {
       const bonus = Math.round(25 * m)
       this.score += bonus
       this.charge = Math.min(1, this.charge + 0.06)
-      this.popups.push({ x: this.orbX + 24 * this.s, y: this.y - 26 * this.s, text: `NEAR MISS +${bonus}`, life: 1, color: COLORS.gold })
+      this.emit('popup', { text: `NEAR MISS +${bonus}` })
       this.audio?.nearMiss()
       haptic(10)
     } else {
-      this.score += Math.round(10 * m)
+      this.score += Math.round((o.type === 'pit' ? 14 : 10) * m)
       this.charge = Math.min(1, this.charge + 0.04)
     }
   }
 
-  crash() {
+  crash(o) {
+    this.killer = o?.type
     this.mode = 'over'
     this.holding = false
     this.overTimer = 0.9
     this.shake = 1
     this.flash = 1
-    this.burstAt(this.orbX, this.y, 46, COLORS.orb, { speed: 420 })
+    this.burstAt(this.orbX, this.y, 46, this.playerColor, { speed: 420 })
     this.burstAt(this.orbX, this.y, 18, '#ffffff', { speed: 300 })
     this.audio?.crash()
     this.audio?.ride(false, 0)
@@ -523,272 +630,5 @@ export class Engine {
       p.life -= dt
     }
     this.particles = this.particles.filter((p) => p.life > 0)
-    for (const q of this.popups) {
-      q.y -= 40 * this.s * dt
-      q.life -= dt
-    }
-    this.popups = this.popups.filter((q) => q.life > 0)
-  }
-
-  // ---- rendering -----------------------------------------------------------
-
-  draw() {
-    const { ctx, W, H, dpr } = this
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.save()
-    if (this.shake > 0 && !this.reduceMotion) {
-      const a = this.shake * 10 * this.s
-      ctx.translate(rand(-a, a), rand(-a, a))
-    }
-    this.drawBackground()
-    this.drawStreaks()
-    this.drawFloor()
-    for (const o of this.obstacles) this.drawObstacle(o)
-    this.drawParticles()
-    if (this.mode !== 'over') this.drawOrb()
-    this.drawPopups()
-    ctx.restore()
-
-    if (this.flash > 0) {
-      ctx.fillStyle = `rgba(255,255,255,${this.flash * 0.35})`
-      ctx.fillRect(0, 0, W, H)
-    }
-  }
-
-  drawBackground() {
-    const { ctx, W, H, s } = this
-    ctx.fillStyle = COLORS.bg
-    ctx.fillRect(-30, -30, W + 60, H + 60)
-
-    const top = ctx.createRadialGradient(W * 0.5, -H * 0.1, 0, W * 0.5, -H * 0.1, H * 0.8)
-    top.addColorStop(0, 'rgba(0,245,212,0.07)')
-    top.addColorStop(1, 'rgba(0,245,212,0)')
-    ctx.fillStyle = top
-    ctx.fillRect(-30, -30, W + 60, H + 60)
-
-    // Two parallax grid layers.
-    const layers = [
-      { cell: 140 * s, par: 0.18, alpha: 0.035 },
-      { cell: 56 * s, par: 0.4, alpha: 0.055 },
-    ]
-    ctx.lineWidth = 1
-    for (const L of layers) {
-      ctx.strokeStyle = `rgba(255,255,255,${L.alpha})`
-      ctx.beginPath()
-      const off = (this.bgOffset * L.par) % L.cell
-      for (let x = -off; x < W + L.cell; x += L.cell) {
-        ctx.moveTo(Math.round(x) + 0.5, 0)
-        ctx.lineTo(Math.round(x) + 0.5, this.floorTop)
-      }
-      for (let y = this.floorTop; y > -L.cell; y -= L.cell) {
-        ctx.moveTo(0, Math.round(y) + 0.5)
-        ctx.lineTo(W, Math.round(y) + 0.5)
-      }
-      ctx.stroke()
-    }
-  }
-
-  drawStreaks() {
-    const { ctx, W, s } = this
-    const k = clamp((this.mult - 1) / 9, 0, 1)
-    if (k < 0.05) return
-    ctx.lineCap = 'round'
-    ctx.lineWidth = 2 * s
-    for (const st of this.streaks) {
-      const x = st.x * W
-      const y = st.y * (this.floorTop - 20 * s) + 10 * s
-      ctx.strokeStyle = `rgba(0,245,212,${0.28 * k})`
-      ctx.beginPath()
-      ctx.moveTo(x, y)
-      ctx.lineTo(x + st.len * W * (0.5 + k), y)
-      ctx.stroke()
-    }
-  }
-
-  drawFloor() {
-    const { ctx, W, H, s } = this
-    const top = this.floorTop
-    const riding = this.grounded && this.holding && this.mode !== 'over'
-    const k = clamp(this.charge, 0, 1)
-    const glow = 0.5 + 0.5 * k + (riding ? 0.2 : 0)
-
-    const g = ctx.createLinearGradient(0, top, 0, H)
-    g.addColorStop(0, `rgba(255,45,85,${0.5 * Math.min(1, glow)})`)
-    g.addColorStop(1, 'rgba(255,45,85,0.06)')
-    ctx.fillStyle = g
-    ctx.fillRect(-30, top, W + 60, this.floorH + 30)
-
-    ctx.save()
-    ctx.shadowColor = COLORS.slip
-    ctx.shadowBlur = (10 + 14 * k) * s
-    ctx.strokeStyle = COLORS.slip
-    ctx.lineWidth = 2.5 * s
-    ctx.beginPath()
-    ctx.moveTo(-30, top)
-    ctx.lineTo(W + 30, top)
-    ctx.stroke()
-    ctx.restore()
-
-    // Directional chevrons ("boost pad") streaming past the orb.
-    const size = 13 * s
-    const gap = 64 * s
-    const off = this.bgOffset % gap
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    for (let row = 0; row < 2; row++) {
-      const cy = top + this.floorH * (row === 0 ? 0.36 : 0.7)
-      ctx.lineWidth = (row === 0 ? 3.2 : 2.2) * s
-      ctx.strokeStyle = `rgba(255,255,255,${(row === 0 ? 0.5 : 0.22) * (0.6 + 0.4 * glow)})`
-      ctx.beginPath()
-      for (let x = -off - gap * (row ? 0.5 : 0); x < W + gap; x += gap) {
-        ctx.moveTo(x, cy - size)
-        ctx.lineTo(x + size, cy)
-        ctx.lineTo(x, cy + size)
-      }
-      ctx.stroke()
-    }
-
-    if (riding) {
-      const rg = ctx.createRadialGradient(this.orbX, top, 0, this.orbX, top, this.r * 5)
-      rg.addColorStop(0, 'rgba(255,45,85,0.55)')
-      rg.addColorStop(1, 'rgba(255,45,85,0)')
-      ctx.fillStyle = rg
-      ctx.fillRect(this.orbX - this.r * 5, top - this.r * 5, this.r * 10, this.r * 10)
-    }
-  }
-
-  drawObstacle(o) {
-    const { ctx, s, W } = this
-    const rc = this.rectOf(o)
-    const col = o.type === 'floor' ? COLORS.gold : COLORS.danger
-    const pulse = 0.75 + 0.25 * Math.sin(this.clock * 14 + o.seed)
-    const cx = rc.x + rc.w / 2
-
-    ctx.save()
-    ctx.shadowColor = col
-    ctx.shadowBlur = 18 * s
-    ctx.globalAlpha = 0.5 * pulse + 0.2
-    ctx.fillStyle = col
-    ctx.fillRect(rc.x, rc.y, rc.w, rc.h)
-    ctx.globalAlpha = 1
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(cx - 1.5 * s, rc.y, 3 * s, rc.h)
-    // Emitter nodes at both ends of the beam.
-    const nodeY = o.type === 'floor' ? rc.y : rc.y + rc.h
-    ctx.fillStyle = col
-    ctx.beginPath()
-    ctx.arc(cx, nodeY, rc.w * 0.75, 0, TAU)
-    ctx.fill()
-    ctx.fillStyle = '#fff'
-    ctx.beginPath()
-    ctx.arc(cx, nodeY, rc.w * 0.28, 0, TAU)
-    ctx.fill()
-    ctx.restore()
-
-    // Off-screen warning marker at the right edge.
-    if (o.x > W - 4) {
-      const y = o.type === 'floor' ? rc.y + rc.h / 2 : rc.h / 2
-      const sz = 15 * s * (0.9 + 0.2 * Math.sin(this.clock * 12))
-      const x = W - 26 * s
-      ctx.save()
-      ctx.fillStyle = col
-      ctx.globalAlpha = 0.95
-      ctx.lineJoin = 'round'
-      ctx.lineWidth = 4 * s
-      ctx.strokeStyle = col
-      ctx.beginPath()
-      ctx.moveTo(x, y - sz)
-      ctx.lineTo(x + sz * 0.95, y + sz * 0.7)
-      ctx.lineTo(x - sz * 0.95, y + sz * 0.7)
-      ctx.closePath()
-      ctx.fill()
-      ctx.stroke()
-      ctx.fillStyle = COLORS.bg
-      ctx.font = `800 ${Math.round(sz * 1.1)}px -apple-system, system-ui, sans-serif`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('!', x, y + sz * 0.25)
-      ctx.restore()
-    }
-  }
-
-  drawParticles() {
-    const { ctx } = this
-    ctx.save()
-    ctx.globalCompositeOperation = 'lighter'
-    for (const p of this.particles) {
-      const a = clamp(p.life / p.max, 0, 1)
-      ctx.globalAlpha = a * 0.9
-      ctx.fillStyle = p.color
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, Math.max(0.5, p.size * (0.4 + 0.6 * a)), 0, TAU)
-      ctx.fill()
-    }
-    ctx.restore()
-  }
-
-  drawOrb() {
-    const { ctx, r, s } = this
-    const x = this.orbX
-    const riding = this.grounded && this.holding
-    const stretch = clamp(Math.abs(this.vy) / (900 * s), 0, 0.35)
-    let sx = 1 - stretch * 0.45
-    let sy = 1 + stretch
-    if (riding) {
-      sx = 1.22
-      sy = 0.8
-    }
-    const y = this.y + r * (1 - sy) // keep the bottom of the orb anchored while squashed
-
-    const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 3.4)
-    halo.addColorStop(0, 'rgba(0,245,212,0.5)')
-    halo.addColorStop(1, 'rgba(0,245,212,0)')
-    ctx.fillStyle = halo
-    ctx.fillRect(x - r * 3.4, y - r * 3.4, r * 6.8, r * 6.8)
-
-    ctx.save()
-    ctx.translate(x, y)
-    ctx.scale(sx, sy)
-    const body = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r)
-    body.addColorStop(0, '#E8FFFB')
-    body.addColorStop(0.45, COLORS.orb)
-    body.addColorStop(1, '#00A896')
-    ctx.fillStyle = body
-    ctx.beginPath()
-    ctx.arc(0, 0, r, 0, TAU)
-    ctx.fill()
-    ctx.restore()
-
-    // Multiplier charge ring.
-    if (this.charge > 0.01) {
-      ctx.save()
-      ctx.lineCap = 'round'
-      ctx.lineWidth = 3 * s
-      ctx.strokeStyle = 'rgba(255,255,255,0.14)'
-      ctx.beginPath()
-      ctx.arc(x, this.y, r * 1.75, 0, TAU)
-      ctx.stroke()
-      ctx.strokeStyle = COLORS.slip
-      ctx.shadowColor = COLORS.slip
-      ctx.shadowBlur = 8 * s
-      ctx.beginPath()
-      ctx.arc(x, this.y, r * 1.75, -Math.PI / 2, -Math.PI / 2 + TAU * this.charge)
-      ctx.stroke()
-      ctx.restore()
-    }
-  }
-
-  drawPopups() {
-    const { ctx, s } = this
-    ctx.save()
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    ctx.font = `700 ${Math.round(14 * s)}px -apple-system, system-ui, sans-serif`
-    for (const q of this.popups) {
-      ctx.globalAlpha = clamp(q.life * 1.5, 0, 1)
-      ctx.fillStyle = q.color
-      ctx.fillText(q.text, q.x, q.y)
-    }
-    ctx.restore()
   }
 }

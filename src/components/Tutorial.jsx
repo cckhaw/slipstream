@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react'
-import { Button, ChevronDown, GlassPanel } from './Glass.jsx'
+import { Button, ChevronDown, Panel } from './ui.jsx'
 
 const TOTAL = 3
 
@@ -15,13 +15,13 @@ function Dots({ step }) {
 
 function Callout({ step, eyebrow, title, children, footer, className = '', style }) {
   return (
-    <GlassPanel className={`animate-rise mx-auto w-[min(88vw,340px)] p-5 text-center ${className}`} style={style} role="dialog" aria-label={title}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-label-secondary">{eyebrow}</div>
-      <h2 className="mt-1 text-[22px] font-bold tracking-tight">{title}</h2>
+    <Panel className={`animate-rise mx-auto w-[min(88vw,340px)] p-5 text-center ${className}`} style={style} role="dialog" aria-label={title}>
+      <div className="font-pixel text-[11px] font-black uppercase tracking-[0.14em] text-label-secondary">{eyebrow}</div>
+      <h2 className="mt-1 font-display text-[24px] font-black tracking-tight">{title}</h2>
       <p className="mt-2 text-[17px] leading-snug text-label-secondary">{children}</p>
       <div className="mt-4"><Dots step={step} /></div>
       {footer}
-    </GlassPanel>
+    </Panel>
   )
 }
 
@@ -70,7 +70,7 @@ export default function Tutorial({ step, metrics, progress, onNext, onSkip }) {
           />
         )}
         <div className="absolute inset-x-0" style={{ top: rect ? rect.y + rect.h + 28 : 160 }}>
-          <Callout step={0} eyebrow="Step 1 of 3" title="The Goal" footer={<><Button variant="primary" className="mt-4" onClick={onNext}>Continue</Button>{skip}</>}>
+          <Callout step={0} eyebrow="Step 1 of 3" title="The Goal" footer={<><Button variant="green" className="mt-4" onClick={onNext}>Continue</Button>{skip}</>}>
             <B>Survive the conduit</B> and <B>stack your multiplier!</B>
           </Callout>
         </div>
@@ -132,7 +132,7 @@ export default function Tutorial({ step, metrics, progress, onNext, onSkip }) {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 flex justify-center" style={{ top: calloutTop }}>
-      <div className="glass-pill animate-pop px-5 py-3 text-[17px] font-semibold">Nice launch! You&rsquo;re live…</div>
+      <div className="chunk btn-green animate-pop px-5 py-3 font-display text-[18px] font-black">Nice launch! You&rsquo;re live…</div>
     </div>
   )
 }

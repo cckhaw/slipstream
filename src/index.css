@@ -54,3 +54,16 @@ button:focus-visible {
     background: rgba(24, 30, 46, 0.92);
   }
 }
+
+/* iOS Safari blocks typing in inputs that inherit user-select: none. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation;
+}
+
+/* Hide scrollbars on horizontal tab strips; keep scrolling. */
+.touch-pan-x::-webkit-scrollbar {
+  display: none;
+}
