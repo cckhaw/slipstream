@@ -1,4 +1,4 @@
-// Crewmate-style player colours (picked on the profile screen).
+// Player colours (picked on the profile screen).
 export const PLAYER_COLORS = [
   { id: 'red', hex: '#E5383B', label: 'Red' },
   { id: 'orange', hex: '#FF8A1F', label: 'Orange' },

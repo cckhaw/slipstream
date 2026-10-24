@@ -1,5 +1,5 @@
 // Canvas 2D renderer with one theme per 2D world (neon, quarry, ship) and
-// three player avatars (orb, cube head, crewmate-style bean).
+// three player avatars (orb, cube head, and the "Zip" comet-blob mascot).
 import { COLORS } from './constants.js'
 import { shade } from '../lib/colors.js'
 
@@ -26,7 +26,7 @@ function rr(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-// Pixel-style bevelled block (Minecraft-ish).
+// Pixel-style bevelled block.
 function block(ctx, x, y, w, h, base) {
   const t = Math.max(2, Math.min(w, h) * 0.14)
   ctx.fillStyle = base
@@ -237,7 +237,10 @@ export class Renderer2D {
     else if (kind === 'cube') {
       ctx.rotate(e.grounded ? 0 : e.spin)
       this.avatarCube()
-    } else this.avatarBean()
+    } else {
+      ctx.rotate(clamp(e.vy / (900 * s), -1, 1) * 0.3) // nose up while rising
+      this.avatarBlob()
+    }
     ctx.restore()
 
     // Multiplier charge ring.
@@ -291,35 +294,63 @@ export class Renderer2D {
     }
   }
 
-  avatarBean() {
+  // Zip: round body, swoosh tail, glowing antenna, big eyes.
+  avatarBlob() {
     const { ctx } = this
-    const e = this.e
-    const R = e.r
-    const c = e.playerColor
+    const R = this.e.r
+    const c = this.e.playerColor
     ctx.lineWidth = Math.max(2, R * 0.2)
     ctx.strokeStyle = INK
     ctx.lineJoin = 'round'
-    const fill = (col) => {
-      ctx.fillStyle = col
+    ctx.lineCap = 'round'
+    // Tail.
+    ctx.beginPath()
+    ctx.moveTo(-R * 0.75, -R * 0.35)
+    ctx.lineTo(-R * 1.9, -R * 0.95)
+    ctx.quadraticCurveTo(-R * 1.4, 0, -R * 1.9, R * 0.95)
+    ctx.lineTo(-R * 0.75, R * 0.35)
+    ctx.closePath()
+    ctx.fillStyle = shade(c, -0.3)
+    ctx.fill()
+    ctx.stroke()
+    // Antenna.
+    ctx.beginPath()
+    ctx.moveTo(R * 0.2, -R * 0.9)
+    ctx.lineTo(R * 0.5, -R * 1.5)
+    ctx.stroke()
+    ctx.fillStyle = '#FFE27A'
+    ctx.beginPath()
+    ctx.arc(R * 0.55, -R * 1.58, R * 0.24, 0, TAU)
+    ctx.fill()
+    ctx.stroke()
+    // Body.
+    ctx.fillStyle = c
+    ctx.beginPath()
+    ctx.arc(0, 0, R, 0, TAU)
+    ctx.fill()
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.38)'
+    ctx.beginPath()
+    ctx.ellipse(-R * 0.4, -R * 0.45, R * 0.2, R * 0.36, 0.6, 0, TAU)
+    ctx.fill()
+    // Eyes.
+    for (const ex of [R * 0.12, R * 0.62]) {
+      ctx.fillStyle = '#fff'
+      ctx.lineWidth = Math.max(1.5, R * 0.12)
+      ctx.beginPath()
+      ctx.ellipse(ex, -R * 0.12, R * 0.26, R * 0.34, 0, 0, TAU)
       ctx.fill()
       ctx.stroke()
+      ctx.fillStyle = INK
+      ctx.beginPath()
+      ctx.arc(ex + R * 0.08, -R * 0.08, R * 0.15, 0, TAU)
+      ctx.fill()
     }
-    rr(ctx, -R * 1.25, -R * 0.15, R * 0.55, R * 1.05, R * 0.2) // backpack
-    fill(shade(c, -0.25))
-    rr(ctx, -R * 0.7, R * 0.7, R * 0.6, R * 0.5, R * 0.18) // legs
-    fill(shade(c, -0.15))
-    rr(ctx, R * 0.08, R * 0.7, R * 0.6, R * 0.5, R * 0.18)
-    fill(shade(c, -0.15))
-    rr(ctx, -R * 0.85, -R * 1.1, R * 1.7, R * 2.0, R * 0.8) // body
-    fill(c)
-    ctx.fillStyle = 'rgba(255,255,255,0.35)'
-    rr(ctx, -R * 0.6, -R * 0.9, R * 0.35, R * 0.7, R * 0.15)
-    ctx.fill()
-    rr(ctx, R * 0.0, -R * 0.65, R * 1.05, R * 0.72, R * 0.36) // visor
-    fill('#9FE3FF')
-    ctx.fillStyle = 'rgba(255,255,255,0.85)'
-    rr(ctx, R * 0.4, -R * 0.52, R * 0.45, R * 0.18, R * 0.09)
-    ctx.fill()
+    // Smile.
+    ctx.lineWidth = Math.max(1.5, R * 0.12)
+    ctx.beginPath()
+    ctx.arc(R * 0.37, R * 0.25, R * 0.25, 0.25, Math.PI - 0.25)
+    ctx.stroke()
   }
 
   // ==== NEON CONDUIT ========================================================

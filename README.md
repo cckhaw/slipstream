@@ -1,6 +1,6 @@
 # Slipstream
 
-A one-touch mobile arcade game for the browser: React + Vite + Tailwind, HTML5 Canvas (2D worlds), three.js (3D worlds) and Web Audio. The UI mixes Apple HIG basics (44pt+ touch targets, safe areas, system fonts, Reduce Motion) with a chunky game look inspired by Minecraft (bevels, blocky type), Roblox (bold rounded buttons) and Among Us (heavy outlines, crewmate avatar).
+A one-touch mobile arcade game for the browser: React + Vite + Tailwind, HTML5 Canvas (2D worlds), three.js (3D worlds) and Web Audio. The UI mixes Apple HIG basics (44pt+ touch targets, safe areas, system fonts, Reduce Motion) with a chunky, bevelled, heavily outlined game look. The mascot is an original character called Zip.
 
 ```bash
 npm install
@@ -19,7 +19,7 @@ npm run build    # production bundle in dist/ (three.js is lazy-loaded for 3D wo
 | --- | --- | --- |
 | Neon Conduit | 2D | The original: floor and ceiling lasers |
 | Pixel Quarry | 2D | Lava pits, TNT stacks, block walls |
-| Starship Drift | 2D | Low gravity, vent gusts, ceiling pipes |
+| Starship Drift | 2D | Low gravity, air-jet gusts, ceiling pipes |
 | Voxel Valley | 3D | Heavy gravity, long walls, lava rivers |
 | Obby Rush | 3D | Fast, with bricks that pulse up and down |
 | Neon Void | 3D | Everything at once, at high speed |
@@ -35,7 +35,7 @@ Players pick a name and colour once; the profile is stored in `localStorage` so 
 | Path | Purpose |
 | --- | --- |
 | `src/game/engine.js` | Physics, spawning, collisions, world rules, tutorial gating, main loop |
-| `src/game/render2d.js` | Canvas renderer: neon / quarry / ship themes, orb / cube / bean avatars |
+| `src/game/render2d.js` | Canvas renderer: neon / quarry / ship themes, orb / cube / Zip avatars |
 | `src/game/render3d.js` | three.js chase-cam renderer: voxel / obby / grid themes |
 | `src/game/audio.js` | Synthesised sound effects (Web Audio) |
 | `src/lib/` | Storage, leaderboard + profile, colours |

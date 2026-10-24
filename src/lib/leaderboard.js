@@ -63,7 +63,7 @@ function readHumans(worldId) {
 
 const writeHumans = (worldId, rows) => store.write(boardKey(worldId), JSON.stringify(rows))
 
-const BOT_NAMES = ['Beanie', 'Sparky', 'BlockBob', 'Zoomer', 'Pixel Pete', 'Vent Kid', 'Lava Larry', 'TNT Tim', 'Orbit', 'Nova', 'Glitch', 'Mochi']
+const BOT_NAMES = ['Biscuit', 'Sparky', 'BlockBob', 'Zoomer', 'Pixel Pete', 'Jet Kid', 'Lava Larry', 'TNT Tim', 'Orbit', 'Nova', 'Glitch', 'Mochi']
 const BOT_COLORS = ['#E5383B', '#FF8A1F', '#FFD93D', '#6EE35A', '#1FA34A', '#3D6BFF', '#8B5CF6', '#FF5FBF', '#E6EDF7', '#00F5D4']
 const BOT_TOP = { neon: 8000, quarry: 9000, ship: 7500, voxel: 11000, obby: 12000, grid: 14000 }
 

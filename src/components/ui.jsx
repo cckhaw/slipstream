@@ -1,5 +1,5 @@
-// Shared chunky game-UI primitives. The look borrows Minecraft's bevels, Roblox's
-// bold rounded buttons and Among Us's heavy outlines, while keeping HIG basics:
+// Shared chunky game-UI primitives: bevelled, heavily outlined, press-down buttons,
+// while keeping HIG basics:
 // 44pt+ touch targets, safe areas, high-contrast labels and Reduce Motion support.
 
 export function Panel({ className = '', children, ...rest }) {

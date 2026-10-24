@@ -1,6 +1,6 @@
 import { IconButton, PauseIcon, Tag } from './ui.jsx'
 
-// Segmented multiplier meter (like Minecraft's XP bar): one block per ×1.
+// Segmented multiplier meter (a segmented progress bar): one block per ×1.
 function Meter({ mult }) {
   return (
     <div className="mx-auto mt-2 flex w-[190px] gap-[3px] rounded-lg border-[3px] border-ink bg-ink p-[3px]" role="img" aria-label={`Multiplier ${mult.toFixed(1)} of 10`}>

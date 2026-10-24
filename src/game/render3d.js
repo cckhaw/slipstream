@@ -10,8 +10,9 @@ import {
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
-  CapsuleGeometry,
+  ConeGeometry,
   CircleGeometry,
+  CylinderGeometry,
   Color,
   DirectionalLight,
   EdgesGeometry,
@@ -523,13 +524,25 @@ export class Renderer3D {
         g.add(eye, pupil)
       }
     } else {
-      const body = new Mesh(new CapsuleGeometry(0.3, 0.35, 6, 16), new MeshLambertMaterial({ color: c }))
-      const visor = new Mesh(new SphereGeometry(0.17, 16, 12), new MeshStandardMaterial({ color: '#9FE3FF', emissive: '#6CC4EE', emissiveIntensity: 0.5, roughness: 0.15 }))
-      visor.scale.set(0.55, 0.85, 1.35)
-      visor.position.set(0.24, 0.16, 0)
-      const pack = new Mesh(new BoxGeometry(0.2, 0.38, 0.36), new MeshLambertMaterial({ color: shade(c, -0.25) }))
-      pack.position.set(-0.3, -0.02, 0)
-      g.add(body, visor, pack)
+      // Zip: round body, swoosh tail, glowing antenna, big eyes.
+      const body = new Mesh(new SphereGeometry(R, 28, 20), new MeshLambertMaterial({ color: c }))
+      const tail = new Mesh(new ConeGeometry(0.22, 0.6, 14), new MeshLambertMaterial({ color: shade(c, -0.3) }))
+      tail.rotation.z = Math.PI / 2
+      tail.position.set(-0.52, 0, 0)
+      const stalk = new Mesh(new CylinderGeometry(0.02, 0.02, 0.3, 8), new MeshBasicMaterial({ color: 0x05070c }))
+      stalk.position.set(0.08, 0.46, 0)
+      stalk.rotation.z = -0.35
+      const tip = new Mesh(new SphereGeometry(0.075, 12, 10), new MeshBasicMaterial({ color: '#FFE27A' }))
+      tip.position.set(0.15, 0.62, 0)
+      g.add(body, tail, stalk, tip)
+      for (const z of [-0.13, 0.13]) {
+        const eye = new Mesh(new SphereGeometry(0.1, 14, 10), new MeshBasicMaterial({ color: 0xffffff }))
+        eye.scale.set(0.5, 1.15, 0.9)
+        eye.position.set(0.31, 0.08, z)
+        const pupil = new Mesh(new SphereGeometry(0.055, 10, 8), new MeshBasicMaterial({ color: 0x05070c }))
+        pupil.position.set(0.355, 0.07, z + 0.02)
+        g.add(eye, pupil)
+      }
     }
     this.avatar = g
     this.scene.add(g)
@@ -579,7 +592,7 @@ export class Renderer3D {
       this.avatar.scale.set(sx, sy, sx)
       const kind = e.world.avatar
       if (kind === 'cube') this.avatar.rotation.z = e.grounded ? 0 : -e.spin
-      else if (kind === 'bean') this.avatar.rotation.z = clamp(-e.vy / (900 * e.s), -1, 1) * 0.4
+      else if (kind === 'blob') this.avatar.rotation.z = clamp(-e.vy / (900 * e.s), -1, 1) * 0.4
     }
     const h = Math.max(0, Y - R)
     this.shadow.position.x = 0
