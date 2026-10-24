@@ -10,14 +10,22 @@ export default {
         orb: { DEFAULT: '#00F5D4', dim: '#00B8A0' },
         slip: { DEFAULT: '#FF2D55', dim: '#C9203F' },
         gold: '#FF9500',
+        ink: '#05070C',
+        panel: { DEFAULT: '#1B2440', hi: '#2C3A66', lo: '#121A33' },
+        grass: { DEFAULT: '#4ADE80', dark: '#1E9E52' },
+        sky: '#4CC9F0',
+        coin: '#FFC83D',
+        violet: '#8B5CF6',
         danger: '#FF3B30',
         label: {
           DEFAULT: 'rgba(255,255,255,0.96)',
-          secondary: 'rgba(235,235,245,0.62)',
-          tertiary: 'rgba(235,235,245,0.34)',
+          secondary: 'rgba(235,235,245,0.76)',
+          tertiary: 'rgba(235,235,245,0.58)',
         },
       },
       fontFamily: {
+        display: ['ui-rounded', '"SF Pro Rounded"', '"Arial Rounded MT Bold"', '-apple-system', 'system-ui', 'sans-serif'],
+        pixel: ['ui-monospace', '"SF Mono"', 'Menlo', 'Consolas', 'monospace'],
         sans: [
           '-apple-system',
           'BlinkMacSystemFont',
@@ -58,6 +66,14 @@ export default {
           '100%': { transform: 'translateY(0) scale(1)', opacity: '1' },
         },
         fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+        wiggle: {
+          '0%,100%': { transform: 'rotate(-4deg)' },
+          '50%': { transform: 'rotate(4deg)' },
+        },
+        floaty: {
+          '0%,100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-6px)' },
+        },
         goOut: {
           '0%': { transform: 'scale(0.7)', opacity: '0' },
           '25%': { transform: 'scale(1.05)', opacity: '1' },
@@ -73,6 +89,8 @@ export default {
         rise: 'rise 0.45s cubic-bezier(0.2,0.8,0.2,1) both',
         'fade-in': 'fadeIn 0.3s ease-out both',
         'go-out': 'goOut 1.1s ease-out both',
+        wiggle: 'wiggle 0.5s ease-in-out infinite',
+        floaty: 'floaty 2.4s ease-in-out infinite',
       },
     },
   },
@@ -104,6 +122,57 @@ export default {
         },
         // Progressive enhancement: true continuous-curvature corners where supported.
         '.squircle': { 'corner-shape': 'squircle' },
+
+        // ---- Chunky game UI (Minecraft bevels, Roblox buttons, Among Us outlines) ----
+        // Ink outline + top highlight + bottom shade + hard drop that "presses" on tap.
+        '.chunk': {
+          border: '3px solid #05070C',
+          'border-radius': '16px',
+          'box-shadow': 'inset 0 3px 0 rgba(255,255,255,0.38), inset 0 -5px 0 rgba(0,0,0,0.26), 0 5px 0 #05070C',
+          transition: 'transform 80ms ease, box-shadow 80ms ease, filter 80ms ease',
+        },
+        '.chunk:active:not(:disabled)': {
+          transform: 'translateY(4px)',
+          'box-shadow': 'inset 0 3px 0 rgba(255,255,255,0.3), inset 0 -2px 0 rgba(0,0,0,0.26), 0 1px 0 #05070C',
+        },
+        '.btn-green': { background: 'linear-gradient(#6CF59C,#27B864)', color: '#04210F' },
+        '.btn-cyan': { background: 'linear-gradient(#5DFBE6,#00C7AE)', color: '#032620' },
+        '.btn-gold': { background: 'linear-gradient(#FFE27A,#F5A623)', color: '#3A2300' },
+        '.btn-pink': { background: 'linear-gradient(#FF7A9C,#E01E52)', color: '#fff' },
+        '.btn-dark': { background: 'linear-gradient(#3A4A7C,#27345C)', color: '#fff' },
+        // Large rounded panel with a double outline, like an Among Us task window.
+        '.panel': {
+          background: 'linear-gradient(#27325A,#1A2342)',
+          border: '3px solid #05070C',
+          'border-radius': '22px',
+          'box-shadow': 'inset 0 0 0 2px #3F5090, inset 0 5px 0 2px rgba(255,255,255,0.08), 0 8px 0 #05070C, 0 28px 44px rgba(0,0,0,0.45)',
+        },
+        // Recessed inventory-slot look (leaderboard rows, inputs).
+        '.slot': {
+          background: '#0C1124',
+          border: '3px solid #05070C',
+          'border-radius': '12px',
+          'box-shadow': 'inset 0 3px 0 rgba(0,0,0,0.55), inset 0 -2px 0 rgba(255,255,255,0.09)',
+        },
+        // Stroke-outlined display lettering.
+        '.title-outline': {
+          'font-family': "ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', -apple-system, system-ui, sans-serif",
+          'font-weight': '900',
+          'letter-spacing': '0.01em',
+          color: '#fff',
+          '-webkit-text-stroke': '7px #05070C',
+          'paint-order': 'stroke fill',
+          'text-shadow': '0 5px 0 #05070C',
+        },
+        // Blocky Minecraft-style wordmark.
+        '.title-pixel': {
+          'font-family': "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
+          'font-weight': '900',
+          'text-transform': 'uppercase',
+          'letter-spacing': '0.04em',
+          color: '#fff',
+          'text-shadow': '0 4px 0 #3F5090, 0 8px 0 #05070C, 3px 0 0 #05070C, -3px 0 0 #05070C, 0 -3px 0 #05070C',
+        },
       })
       addUtilities({
         '.pt-safe': { 'padding-top': 'max(env(safe-area-inset-top), 12px)' },
