@@ -1,7 +1,8 @@
 // Procedural background music: one original generative track per world, synthesised with
-// the Web Audio API (no audio files). Each song is a 4-bar loop of 16th-note steps; a
-// lookahead scheduler plays it, and an intensity value (0..1, driven by the multiplier)
-// opens the filter and brings in extra layers.
+// the Web Audio API (no audio files). Each song is a 16-bar form (four 4-bar phrases: verse,
+// lift, bridge in a different chord progression, outro lift) of 16th-note steps. A lookahead
+// scheduler plays it; a shared layer adds a lead melody, drum fills, risers and crashes, and
+// an intensity value (0..1, driven by the multiplier) opens the filter and brings in layers.
 
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12)
 
@@ -16,7 +17,7 @@ function rng(seed) {
   }
 }
 
-export const MUSIC_LEVEL = 0.55
+export const MUSIC_LEVEL = 1.25
 
 export class Music {
   constructor() {
@@ -154,7 +155,58 @@ export class Music {
   // ---- transport -------------------------------------------------------------
 
   playStep(n, t) {
-    this.song.step(Math.floor(n / 16) % 4, n % 16, t, this.I, n)
+    const bar = Math.floor(n / 16) % 4
+    const ph = Math.floor(n / 64) % 4
+    this.song.step(bar, n % 16, t, this.I, n, ph)
+    this.layer(bar, n % 16, t, ph, n)
+  }
+
+  // Parts shared by every song: lead melody, fills, risers and crashes.
+  layer(bar, s, t, ph, n) {
+    const song = this.song
+    const I = this.I
+    const beat = 60 / song.bpm
+    const lead = song.lead
+    if (lead && (ph >= 1 || I > 0.35)) {
+      const note = lead.pattern[ph][bar][s]
+      if (note !== null) {
+        const ch = song.prog(ph).chords[bar]
+        // Strong beats land on chord tones, the rest walk the scale.
+        const midi = s % 8 === 0 ? ch[note % ch.length] + lead.up : lead.scale[note % lead.scale.length]
+        const o = { type: lead.type, vol: lead.vol * (0.8 + 0.4 * I), cutoff: lead.cutoff, decay: true, echo: lead.echo }
+        this.tone(midi, t, lead.dur * beat, o)
+        if (I > 0.65) this.tone(midi + 12, t, lead.dur * beat, { ...o, vol: o.vol * 0.35, detune: 8 })
+      }
+    }
+    if (n > 0 && bar === 0 && s === 0) this.noiseHit(t, 1.1, 0.07 + 0.04 * I, { type: 'highpass', freq: 5200, q: 0.5 }) // crash into the next phrase
+    if (bar === 3 && s >= 12 && song.fill !== false) {
+      const k = s - 12
+      this.noiseHit(t, 0.08, 0.04 + 0.025 * k, { type: 'bandpass', freq: 1500 + k * 600, q: 0.9 }) // snare roll
+      if (s === 14 || s === 15) this.kick(t, 0.5)
+    }
+    if (bar === 3 && s === 0 && ph % 2 === 1) this.riser(t, beat * 4)
+  }
+
+  // Filtered-noise sweep that builds into the next phrase.
+  riser(t, dur) {
+    const c = this.ctx
+    const src = c.createBufferSource()
+    src.buffer = this.noise
+    src.loop = true
+    const f = c.createBiquadFilter()
+    f.type = 'bandpass'
+    f.Q.value = 2.5
+    f.frequency.setValueAtTime(300, t)
+    f.frequency.exponentialRampToValueAtTime(7000, t + dur)
+    const g = c.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.09, t + dur)
+    g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.05)
+    src.connect(f)
+    f.connect(g)
+    g.connect(this.bus)
+    src.start(t)
+    src.stop(t + dur + 0.1)
   }
 
   start(id) {
@@ -206,28 +258,55 @@ export class Music {
 }
 
 // ---- songs -------------------------------------------------------------------
-// Each returns { bpm, step(bar, s, t, I, n) }. `I` is the intensity (0..1).
+// Each returns { bpm, prog(ph), lead?, step(bar, s, t, I, n, ph) }. `I` is the intensity
+// (0..1); `ph` is the phrase (0..3) of the 16-bar form: phrases 0-1 use progression A,
+// phrases 2-3 the bridge progression B.
+
+// Seeded lead-melody patterns for the four phrases: a theme (A), the same theme with a new
+// ending (A'), a contrasting bridge (B), then the theme again with the bridge's ending.
+// Entries are scale / chord-tone indices, or null for a rest.
+function makeLead(seed, dens, scaleLen, spec) {
+  const r = rng(seed)
+  const phrase = () =>
+    Array.from({ length: 4 }, () => {
+      let at = Math.floor(r() * scaleLen)
+      return Array.from({ length: 16 }, (_, s) => {
+        const on = s % 2 === 0 ? r() < dens : r() < dens * 0.3
+        if (!on) return null
+        at = Math.max(0, Math.min(scaleLen * 2 - 1, at + Math.floor(r() * 5) - 2))
+        return at
+      })
+    })
+  const A = phrase()
+  const B = phrase()
+  const A2 = [A[0], A[1], A[2], B[3]]
+  return { ...spec, pattern: [A, A2, B, A2] }
+}
 
 const SONGS = {
   // Neon Conduit: driving synthwave in A minor.
   neon(m) {
     const bpm = 118
-    const roots = [45, 41, 48, 43] // A F C G
-    const chords = [[57, 60, 64], [53, 57, 60], [55, 60, 64], [55, 59, 62]]
+    const P = [
+      { roots: [45, 41, 48, 43], chords: [[57, 60, 64], [53, 57, 60], [55, 60, 64], [55, 59, 62]] }, // Am F C G
+      { roots: [41, 43, 45, 40], chords: [[53, 57, 60], [55, 59, 62], [57, 60, 64], [56, 59, 64]] }, // F G Am E
+    ]
     const arp = [0, 1, 2, 1, 2, 3, 2, 1, 0, 1, 2, 3, 2, 1, 0, 1]
     return {
-      gain: 1,
       bpm,
-      step(bar, s, t, I) {
+      prog: (ph) => P[ph >> 1],
+      lead: makeLead(3, 0.55, 8, { scale: [69, 71, 72, 74, 76, 77, 79, 81], up: 12, type: 'sawtooth', vol: 0.05, cutoff: 3000, echo: 0.3, dur: 0.36 }),
+      step(bar, s, t, I, n, ph) {
+        const { roots, chords } = P[ph >> 1]
         const ch = chords[bar]
         const notes = [...ch, ch[0] + 12]
-        if (s % 4 === 0) m.kick(t, 0.8)
-        if (s % 4 === 2) m.hat(t, 0.05, true)
-        else if (I > 0.25 && s % 2 === 0) m.hat(t, 0.03)
-        if (I > 0.3 && (s === 4 || s === 12)) m.clap(t, 0.07)
-        if (s % 2 === 0) m.tone(s === 6 || s === 14 ? roots[bar] + 12 : roots[bar], t, 0.17, { type: 'sawtooth', vol: 0.11, cutoff: 700, decay: true })
+        if (s % 4 === 0) m.kick(t, 0.9)
+        if (s % 4 === 2) m.hat(t, 0.06, true)
+        else if (I > 0.25 && s % 2 === 0) m.hat(t, 0.035)
+        if ((I > 0.3 || ph >= 2) && (s === 4 || s === 12)) m.clap(t, 0.09)
+        if (s % 2 === 0) m.tone(s === 6 || s === 14 ? roots[bar] + 12 : roots[bar], t, 0.17, { type: 'sawtooth', vol: 0.13, cutoff: 700, decay: true })
         m.tone(notes[arp[s]] + 12, t, 0.14, { type: 'sawtooth', vol: 0.03 + 0.03 * I, cutoff: 2200, decay: true, echo: 0.25 })
-        if (s === 0) m.pad(ch, t, (60 / bpm) * 4, { type: 'sawtooth', vol: 0.022, cutoff: 700 })
+        if (s === 0) m.pad(ch, t, (60 / bpm) * 4, { type: 'sawtooth', vol: 0.026, cutoff: 700 })
       },
     }
   },
@@ -235,22 +314,24 @@ const SONGS = {
   // Pixel Quarry: calm chiptune-style pentatonic in C major.
   quarry(m) {
     const bpm = 92
-    const roots = [48, 45, 41, 43]
-    const chords = [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]]
-    const scale = [60, 62, 64, 67, 69, 72, 74, 76]
-    const r = rng(7)
-    const melody = Array.from({ length: 64 }, (_, i) => (i % 2 === 0 && r() < 0.62 ? scale[Math.floor(r() * scale.length)] : null))
+    const P = [
+      { roots: [48, 45, 41, 43], chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]] }, // C Am F G
+      { roots: [41, 43, 40, 45], chords: [[53, 57, 60], [55, 59, 62], [52, 55, 59], [57, 60, 64]] }, // F G Em Am
+    ]
     return {
-      gain: 2.2,
       bpm,
-      step(bar, s, t, I, n) {
-        const mel = melody[n % 64]
-        if (mel) m.tone(mel, t, 0.28, { type: 'square', vol: 0.04 + 0.02 * I, cutoff: 3200, decay: true, echo: 0.22 })
-        if (s === 0) m.tone(roots[bar], t, 0.6, { type: 'triangle', vol: 0.15, decay: true })
-        if (s === 8) m.tone(roots[bar] + 7, t, 0.5, { type: 'triangle', vol: 0.11, decay: true })
-        if (s === 0) m.pad(chords[bar], t, (60 / bpm) * 4, { vol: 0.02 })
-        if (I > 0.3 && s % 4 === 0) m.hat(t, 0.025)
-        if (I > 0.55 && (s === 0 || s === 8)) m.kick(t, 0.5)
+      gain: 1.3,
+      prog: (ph) => P[ph >> 1],
+      lead: makeLead(7, 0.6, 8, { scale: [72, 74, 76, 79, 81, 84, 86, 88], up: 12, type: 'square', vol: 0.045, cutoff: 3200, echo: 0.25, dur: 0.5 }),
+      step(bar, s, t, I, n, ph) {
+        const { roots, chords } = P[ph >> 1]
+        if (s === 0) m.tone(roots[bar], t, 0.6, { type: 'triangle', vol: 0.17, decay: true })
+        if (s === 8) m.tone(roots[bar] + 7, t, 0.5, { type: 'triangle', vol: 0.13, decay: true })
+        if (s % 2 === 0) m.tone(chords[bar][(s >> 1) % 3] + 12, t, 0.2, { type: 'square', vol: 0.02 + 0.015 * I, cutoff: 2400, decay: true }) // chiptune arp
+        if (s === 0) m.pad(chords[bar], t, (60 / bpm) * 4, { vol: 0.024 })
+        if ((I > 0.3 || ph >= 2) && s % 4 === 0) m.hat(t, 0.03)
+        if ((I > 0.55 || ph >= 2) && (s === 0 || s === 8)) m.kick(t, 0.6)
+        if (ph >= 2 && (s === 4 || s === 12)) m.brush(t, 0.06)
       },
     }
   },
@@ -258,24 +339,27 @@ const SONGS = {
   // Starship Drift: slow, spacious D dorian with sparse echoing pings.
   ship(m) {
     const bpm = 76
-    const roots = [38, 34, 36, 33]
-    const chords = [[50, 57, 60, 64], [46, 53, 57, 62], [48, 55, 59, 64], [45, 52, 57, 60]]
-    const pings = [74, 77, 79, 81, 84, 86]
-    const r = rng(21)
-    const seq = Array.from({ length: 64 }, () => (r() < 0.17 ? pings[Math.floor(r() * pings.length)] : null))
+    const P = [
+      { roots: [38, 34, 36, 33], chords: [[50, 57, 60, 64], [46, 53, 57, 62], [48, 55, 59, 64], [45, 52, 57, 60]] }, // Dm Bb C Am
+      { roots: [43, 38, 34, 36], chords: [[55, 58, 62, 65], [50, 53, 57, 62], [46, 53, 57, 62], [48, 55, 59, 64]] }, // Gm Dm Bb C
+    ]
     return {
-      gain: 0.75,
       bpm,
-      step(bar, s, t, I, n) {
+      gain: 0.95,
+      fill: false,
+      prog: (ph) => P[ph >> 1],
+      lead: makeLead(21, 0.22, 8, { scale: [74, 77, 79, 81, 84, 86, 88, 91], up: 12, type: 'sine', vol: 0.07, cutoff: 0, echo: 0.8, dur: 1.6 }),
+      step(bar, s, t, I, n, ph) {
+        const { roots, chords } = P[ph >> 1]
         const beat = (60 / bpm) * 4
         if (s === 0) {
-          m.pad(chords[bar], t, beat, { vol: 0.045, type: 'sine', cutoff: 1400 })
-          m.tone(roots[bar], t, beat, { type: 'sine', vol: 0.17, a: 0.3, rel: 0.6 })
+          m.pad(chords[bar], t, beat, { vol: 0.05, type: 'sine', cutoff: 1400 })
+          m.tone(roots[bar], t, beat, { type: 'sine', vol: 0.2, a: 0.3, rel: 0.6 })
         }
-        const p = seq[n % 64]
-        if (p) m.tone(p, t, 1.1, { type: 'sine', vol: 0.06, decay: true, echo: 0.75 })
-        if (I > 0.2 && s === 0 && bar % 2 === 0) m.kick(t, 0.4)
+        if (s % 4 === 0) m.tone(chords[bar][(s >> 2) % 4] + 12, t, 0.9, { type: 'sine', vol: 0.035, decay: true, echo: 0.6 }) // slow arpeggio shimmer
+        if ((I > 0.2 || ph >= 2) && s === 0 && bar % 2 === 0) m.kick(t, 0.45)
         if (I > 0.5 && s % 2 === 0) m.tone(chords[bar][(s / 2) % 4] + 12, t, 0.3, { type: 'triangle', vol: 0.03, decay: true, echo: 0.4 })
+        if (ph >= 2 && s === 8) m.brush(t, 0.04)
       },
     }
   },
@@ -283,20 +367,25 @@ const SONGS = {
   // Voxel Valley: warm, adventurous G major with plucked arpeggios.
   voxel(m) {
     const bpm = 108
-    const roots = [43, 38, 40, 36]
-    const chords = [[55, 59, 62], [50, 54, 57], [52, 55, 59], [48, 52, 55]]
+    const P = [
+      { roots: [43, 38, 40, 36], chords: [[55, 59, 62], [50, 54, 57], [52, 55, 59], [48, 52, 55]] }, // G D Em C
+      { roots: [36, 43, 38, 40], chords: [[48, 52, 55], [55, 59, 62], [50, 54, 57], [52, 55, 59]] }, // C G D Em
+    ]
     const pat = [0, 1, 2, 1, 0, 1, 2, 1]
     return {
-      gain: 1.6,
       bpm,
-      step(bar, s, t, I) {
+      gain: 1.1,
+      prog: (ph) => P[ph >> 1],
+      lead: makeLead(11, 0.5, 8, { scale: [67, 69, 71, 74, 76, 79, 81, 83], up: 12, type: 'triangle', vol: 0.085, cutoff: 3500, echo: 0.3, dur: 0.5 }),
+      step(bar, s, t, I, n, ph) {
+        const { roots, chords } = P[ph >> 1]
         const ch = chords[bar]
-        if (s % 2 === 0) m.tone(ch[pat[s / 2]] + 12, t, 0.34, { type: 'triangle', vol: 0.075 + 0.03 * I, decay: true, echo: 0.18 })
-        if (s % 4 === 0) m.tone(roots[bar], t, 0.32, { type: 'triangle', vol: 0.15, decay: true })
-        if (s === 0 || s === 8) m.kick(t, 0.55)
-        if (I > 0.15 && (s === 4 || s === 12)) m.brush(t, 0.05)
-        if (I > 0.5 && s % 2 === 0) m.hat(t, 0.02)
-        if (s === 0) m.pad(ch, t, (60 / bpm) * 4, { vol: 0.025 })
+        if (s % 2 === 0) m.tone(ch[pat[s / 2]] + 12, t, 0.34, { type: 'triangle', vol: 0.07 + 0.03 * I, decay: true, echo: 0.18 })
+        if (s % 4 === 0) m.tone(roots[bar], t, 0.32, { type: 'triangle', vol: 0.17, decay: true })
+        if (s === 0 || s === 8) m.kick(t, 0.65)
+        if ((I > 0.15 || ph >= 2) && (s === 4 || s === 12)) m.brush(t, 0.06)
+        if ((I > 0.5 || ph >= 1) && s % 2 === 0) m.hat(t, 0.025)
+        if (s === 0) m.pad(ch, t, (60 / bpm) * 4, { vol: 0.03 })
       },
     }
   },
@@ -304,7 +393,10 @@ const SONGS = {
   // Obby Rush: fast, bouncy square-lead in C major.
   obby(m) {
     const bpm = 140
-    const roots = [48, 43, 45, 41]
+    const P = [
+      { roots: [48, 43, 45, 41], shift: [0, 0, 0, 0] }, // C G Am F
+      { roots: [41, 43, 45, 41], shift: [5, 7, 9, 0] }, // F G Am F: the same riff, moved up
+    ]
     const motif = [
       [72, null, 76, null, 79, null, 76, null, 72, null, 76, 79, 81, null, 79, null],
       [71, null, 74, null, 79, null, 74, null, 71, null, 74, 79, 83, null, 79, null],
@@ -312,16 +404,21 @@ const SONGS = {
       [72, null, 77, null, 81, null, 77, null, 72, null, 77, 81, 84, null, 81, null],
     ]
     const funk = new Set([0, 3, 6, 8, 11, 14])
+    const chords = [[60, 64, 67], [55, 59, 62], [57, 60, 64], [53, 57, 60]]
     return {
-      gain: 0.9,
       bpm,
-      step(bar, s, t, I) {
+      gain: 1.05,
+      prog: () => ({ chords }),
+      step(bar, s, t, I, n, ph) {
+        const { roots, shift } = P[ph >> 1]
         const lead = motif[bar][s]
-        if (lead) m.tone(lead, t, 0.13, { type: 'square', vol: 0.04 + 0.025 * I, cutoff: 3500, decay: true })
-        if (funk.has(s)) m.tone(s === 6 ? roots[bar] + 12 : roots[bar], t, 0.12, { type: 'sawtooth', vol: 0.12, cutoff: 900, decay: true })
-        if (s % 4 === 0) m.kick(t, 0.85)
-        if (s === 4 || s === 12) m.clap(t, 0.09)
-        if (s % 2 === 0) m.hat(t, 0.035, s % 4 === 2)
+        if (lead) m.tone(lead + shift[bar], t, 0.13, { type: 'square', vol: 0.045 + 0.025 * I, cutoff: 3500, decay: true })
+        if (lead && ph === 3 && I > 0.3) m.tone(lead + shift[bar] + 12, t, 0.1, { type: 'square', vol: 0.02, cutoff: 3500, decay: true, detune: 6 }) // octave double in the last phrase
+        if (funk.has(s)) m.tone(s === 6 ? roots[bar] + 12 : roots[bar], t, 0.12, { type: 'sawtooth', vol: 0.14, cutoff: 900, decay: true })
+        if (s % 4 === 0) m.kick(t, 0.9)
+        if (s === 4 || s === 12) m.clap(t, 0.1)
+        if (s % 2 === 0) m.hat(t, 0.04, s % 4 === 2)
+        if (ph >= 2 && s % 4 === 3) m.tone(chords[bar][1] + 12 + shift[bar], t, 0.08, { type: 'square', vol: 0.018, cutoff: 2800, decay: true }) // off-beat stab
       },
     }
   },
@@ -329,21 +426,26 @@ const SONGS = {
   // Neon Void: dark, relentless four-on-the-floor in F# minor.
   grid(m) {
     const bpm = 128
-    const roots = [42, 38, 45, 40]
-    const chords = [[54, 57, 61], [50, 54, 57], [57, 61, 64], [52, 56, 59]]
+    const P = [
+      { roots: [42, 38, 45, 40], chords: [[54, 57, 61], [50, 54, 57], [57, 61, 64], [52, 56, 59]] }, // F#m D A E
+      { roots: [38, 40, 42, 37], chords: [[50, 54, 57], [52, 56, 59], [54, 57, 61], [49, 52, 56]] }, // D E F#m C#
+    ]
     const arp = [0, 2, 1, 2, 0, 1, 2, 1, 0, 2, 1, 2, 2, 1, 0, 1]
     return {
-      gain: 0.85,
       bpm,
-      step(bar, s, t, I) {
+      gain: 0.95,
+      prog: (ph) => P[ph >> 1],
+      lead: makeLead(5, 0.5, 8, { scale: [66, 68, 69, 71, 73, 74, 76, 78], up: 12, type: 'sawtooth', vol: 0.045, cutoff: 3000, echo: 0.35, dur: 0.3 }),
+      step(bar, s, t, I, n, ph) {
+        const { roots, chords } = P[ph >> 1]
         const ch = chords[bar]
-        if (s % 4 === 0) m.kick(t, 0.95)
-        if (I > 0.15 && (s === 4 || s === 12)) m.clap(t, 0.08)
-        if (s % 4 === 2) m.hat(t, 0.05, true)
-        else if (I > 0.2) m.hat(t, 0.022)
-        if (s % 4 !== 0) m.tone(roots[bar], t, 0.1, { type: 'sawtooth', vol: s % 4 === 2 ? 0.1 : 0.06, cutoff: 600 + 800 * I, decay: true })
+        if (s % 4 === 0) m.kick(t, 1)
+        if ((I > 0.15 || ph >= 2) && (s === 4 || s === 12)) m.clap(t, 0.09)
+        if (s % 4 === 2) m.hat(t, 0.055, true)
+        else if (I > 0.2 || ph >= 1) m.hat(t, 0.025)
+        if (s % 4 !== 0) m.tone(roots[bar], t, 0.1, { type: 'sawtooth', vol: s % 4 === 2 ? 0.12 : 0.07, cutoff: 600 + 800 * I, decay: true })
         m.tone(ch[arp[s]] + 12, t, 0.11, { type: 'sawtooth', vol: 0.025 + 0.03 * I, cutoff: 2600, decay: true, echo: 0.3 })
-        if (s === 0) m.pad(ch, t, (60 / bpm) * 4, { type: 'sawtooth', vol: 0.02, cutoff: 800 })
+        if (s === 0) m.pad(ch, t, (60 / bpm) * 4, { type: 'sawtooth', vol: 0.024, cutoff: 800 })
       },
     }
   },

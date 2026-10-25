@@ -75,13 +75,14 @@ export default function App() {
     },
     popup: ({ text }) => flash(setPopup, text, 900, 'popup'),
     turn: ({ kind }) => flash(setTurn, kind, 2400, 'turn'),
-    gameover: ({ score }) => {
+    gameover: async ({ score }) => {
       const w = getWorld(worldRef.current)
       const p = profileRef.current
-      const r = p && score > 0 ? lb.submitScore(w.id, p, score) : { isNewBest: false, rank: null, best: lb.bestFor(w.id, p) }
+      setResult({ score, isNewBest: false, rank: null })
+      setScreen('over')
+      const r = p && score > 0 ? await lb.submitScore(w.id, p, score) : { isNewBest: false, rank: null, best: lb.bestFor(w.id, p) }
       setBest(r.best ?? 0)
       setResult({ score, isNewBest: r.isNewBest, rank: r.rank })
-      setScreen('over')
     },
   }
 

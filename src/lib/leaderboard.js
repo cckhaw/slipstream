@@ -1,7 +1,8 @@
 // Profile + per-world leaderboards.
 //
-// Storage is local to this device (localStorage). The rest of the app only uses the
-// functions below, so a network backend can replace the read/write helpers later.
+// Real players' scores live on the server (api/leaderboard.js) so every player sees the
+// same global board per world. This device also keeps its own scores in localStorage:
+// they feed the "Best" numbers and are the fallback when the server is unreachable.
 // Each board is padded with clearly-labelled rival bots so the Top 10 is never empty.
 import * as store from './storage.js'
 import { WORLDS } from '../game/worlds.js'
@@ -35,6 +36,7 @@ const uid = () => globalThis.crypto?.randomUUID?.() ?? `${Math.random().toString
 export function saveProfile({ name, color }, existing = null) {
   const profile = { id: existing?.id ?? uid(), name: sanitizeName(name), color }
   store.write(PROFILE_KEY, JSON.stringify(profile))
+  push({ world: WORLDS[0].id, id: profile.id, name: profile.name, color: profile.color })
   for (const w of WORLDS) {
     const rows = readHumans(w.id)
     let changed = false
@@ -82,20 +84,47 @@ function bots(worldId) {
 
 const byScore = (a, b) => b.score - a.score || a.ts - b.ts
 
-export function getBoard(worldId) {
-  return [...bots(worldId), ...readHumans(worldId)].sort(byScore)
+// ---- server ------------------------------------------------------------------
+
+const API = '/api/leaderboard'
+
+async function call(url, init) {
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(6000) })
+    return res.ok ? await res.json() : null
+  } catch {
+    return null
+  }
+}
+
+const push = (body) =>
+  call(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+
+const pull = (worldId, profile) => call(`${API}?world=${encodeURIComponent(worldId)}${profile ? `&id=${encodeURIComponent(profile.id)}` : ''}`)
+
+// Merge the server's real players (or this device's, offline) with the labelled bots.
+function compose(worldId, profile, server) {
+  const humans = server ? server.top.map((r) => ({ ...r, ts: 0 })) : readHumans(worldId)
+  const board = [...bots(worldId), ...humans].sort(byScore)
+  const top = board.slice(0, 10)
+  let me = null
+  if (profile) {
+    const i = board.findIndex((e) => e.id === profile.id)
+    if (i >= 0) me = { entry: board[i], rank: i + 1 }
+    else if (server?.me) {
+      const s = server.me.score
+      me = {
+        entry: { id: profile.id, name: profile.name, color: profile.color, score: s },
+        rank: server.me.rank + bots(worldId).filter((b) => b.score > s).length,
+      }
+    }
+  }
+  return { top, me, inTop: !!me && top.some((e) => e.id === profile.id), online: !!server }
 }
 
 // Top 10 plus the player's own row (with rank) when they fall outside it.
-export function view(worldId, profile) {
-  const board = getBoard(worldId)
-  const top = board.slice(0, 10)
-  const idx = profile ? board.findIndex((e) => e.id === profile.id) : -1
-  return {
-    top,
-    me: idx >= 0 ? { entry: board[idx], rank: idx + 1 } : null,
-    inTop: idx >= 0 && idx < 10,
-  }
+export async function view(worldId, profile) {
+  return compose(worldId, profile, await pull(worldId, profile))
 }
 
 export function bestFor(worldId, profile) {
@@ -103,7 +132,7 @@ export function bestFor(worldId, profile) {
   return readHumans(worldId).find((r) => r.id === profile.id)?.score ?? 0
 }
 
-export function submitScore(worldId, profile, score) {
+export async function submitScore(worldId, profile, score) {
   const rows = readHumans(worldId)
   const i = rows.findIndex((r) => r.id === profile.id)
   const prev = i >= 0 ? rows[i].score : 0
@@ -114,6 +143,9 @@ export function submitScore(worldId, profile, score) {
     else rows.push(entry)
     writeHumans(worldId, rows)
   }
-  const v = view(worldId, profile)
-  return { ...v, isNewBest, best: Math.max(prev, score), rank: v.me?.rank ?? null }
+  // Always send the best we know (a run that failed to upload earlier is retried here).
+  const best = Math.max(prev, score)
+  const server = await push({ world: worldId, id: profile.id, name: profile.name, color: profile.color, score: best })
+  const v = compose(worldId, profile, server)
+  return { ...v, isNewBest, best, rank: v.me?.rank ?? null }
 }

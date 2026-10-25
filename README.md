@@ -14,7 +14,7 @@ npm run build    # production bundle in dist/ (three.js is lazy-loaded for 3D wo
 - **Hold in mid-air** to dive back down and slip under ceiling hazards.
 - Near misses earn bonus points. First-time players get an interactive tutorial; "How to Play" replays it. Desktop: Space / Down works as hold.
 
-## Worlds (each has its own leaderboard)
+## Worlds (each has its own global leaderboard)
 | World | Mode | Challenge |
 | --- | --- | --- |
 | Neon Conduit | 2D | The original: floor and ceiling lasers |
@@ -29,12 +29,12 @@ npm run build    # production bundle in dist/ (three.js is lazy-loaded for 3D wo
 World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, moving barriers, gusts). Adding a world is one entry there plus a theme in `render2d.js` / `render3d.js`.
 
 ## Music
-Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Tracks get brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
+Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Each track is a 16-bar form (verse, lift, a bridge in a new chord progression, outro) with a lead melody, drum fills, risers and crashes, and gets brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
 
 ## Profile and leaderboards
-Players pick a name and colour once; the profile is stored in `localStorage` so returning players are recognised and never retype it. Each world keeps a Top 10 (plus your own rank if you fall outside it).
+Players pick a name and colour once; the profile is stored in `localStorage` so returning players are recognised and never retype it. There is **one global Top 10 per world**, shared by every player, plus your own rank if you fall outside it. Boards are padded with clearly labelled `BOT` rivals; only real players' scores are published.
 
-**Scores are stored on the device**, not on a server. Boards are padded with clearly labelled `BOT` rivals so the Top 10 is never empty. `src/lib/leaderboard.js` is the only module that reads or writes scores, so a network backend can replace it without touching the UI.
+Scores live in Neon Postgres (free plan, from the Vercel Marketplace) behind `api/leaderboard.js`, a Vercel serverless function: a `players` table and a `scores` table holding each player's best score per world; the tables are created on first use. The Neon integration injects `DATABASE_URL` into the Vercel project. Without it the API returns 503 and the game falls back to a device-local board. `src/lib/leaderboard.js` is the only client module that touches scores. Note that scores are reported by the client, so this is a casual board, not cheat-proof.
 
 ## Layout
 | Path | Purpose |
@@ -44,6 +44,7 @@ Players pick a name and colour once; the profile is stored in `localStorage` so 
 | `src/game/render3d.js` | three.js chase-cam renderer: voxel / obby / grid themes, curved track |
 | `src/game/track3d.js` | Track planner and path sampler for 3D turns |
 | `src/game/audio.js` | Synthesised sound effects (Web Audio) |
+| `api/leaderboard.js` | Global leaderboard endpoint (Neon Postgres-backed serverless function) |
 | `src/lib/` | Storage, leaderboard + profile, colours |
 | `src/components/` | Chunky UI kit (`ui.jsx`), menus, world select, leaderboard, HUD, tutorial |
 | `tailwind.config.js` | Palette plus `chunk`, `panel`, `slot`, `title-outline`, `title-pixel` and `glass` utilities |

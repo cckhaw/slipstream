@@ -6,6 +6,7 @@
 import {
   AdditiveBlending,
   AmbientLight,
+  Box3,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -315,8 +316,13 @@ export class Renderer3D {
     this.clouds = []
     // Decor is pinned to the track: distance along it (S0) plus a lateral offset.
     const add = (obj, off, lat) => {
+      // Footprint radius and height, so placement can keep the whole object off the road.
+      const box = new Box3().setFromObject(obj)
+      const r = Math.hypot(box.max.x - box.min.x, box.max.z - box.min.z) / 2
+      // Push it out so even its inner edge clears the rails.
+      lat = Math.sign(lat) * (Math.abs(lat) + r + 0.8)
       stage.add(obj)
-      this.decor.push({ obj, off, lat, S0: null })
+      this.decor.push({ obj, off, lat, r, h: box.max.y, S0: null, vis: 1 })
     }
     const N = 70
     for (let i = 0; i < N; i++) {
@@ -490,21 +496,74 @@ export class Renderer3D {
   }
 
   placeDecor(S) {
+    const { px, pz } = this.path
+    const edge = TRACK_W / 2 + 0.6
+    // Chase camera and the points of the road ahead it needs to see.
+    const cam = this.path.at(-6.5)
+    const cx = cam.x
+    const cz = cam.z
+    if (!this.sightPts) this.sightPts = new Float32Array(32)
+    const sp = this.sightPts
+    let nSight = 0
+    for (let s = 2; s <= 56; s += 6) {
+      const q = this.path.at(s)
+      sp[nSight++] = q.x
+      sp[nSight++] = q.z
+    }
     for (const d of this.decor) {
-      if (d.S0 === null) d.S0 = S + d.off + 10
+      if (d.S0 === null) {
+        d.S0 = S + d.off + 10
+        d.vis = null
+      }
       let s = d.S0 - S
       if (s < -12) {
         d.S0 += SPAN
         s += SPAN
+        d.vis = null
       }
-      // Keep scenery off the track on the inside of tight bends.
-      const k = this.plan.curv(d.S0)
-      let lat = d.lat
-      if (lat * k > 0.7) lat = Math.sign(lat) * (0.7 / Math.abs(k))
-      d.obj.visible = Math.abs(lat) > 3.3 && s < 128
-      if (!d.obj.visible) continue
+      if (s >= 128) {
+        d.obj.visible = false
+        continue
+      }
       const pt = this.path.at(s)
-      d.obj.position.set(pt.x - Math.sin(pt.th) * lat, 0, pt.z + Math.cos(pt.th) * lat)
+      const x = pt.x - Math.sin(pt.th) * d.lat
+      const z = pt.z + Math.cos(pt.th) * d.lat
+
+      // Never on the road: scenery that lands near any part of the track (inside of a
+      // bend, the other leg of a U-turn) is hidden at once. Scenery in the line of sight
+      // of the chase camera shrinks away instead, and grows back when it is clear.
+      let ok = true
+      let onRoad = false
+      const clear = (edge + d.r) * (edge + d.r)
+      for (let i = 0; i < PATH_N; i++) {
+        const dx = px[i] - x
+        const dz = pz[i] - z
+        if (dx * dx + dz * dz < clear) {
+          ok = false
+          onRoad = true
+          break
+        }
+      }
+      if (ok && d.h > 1) {
+        const rr = d.r + 0.8
+        for (let k = 0; k < nSight && ok; k += 2) {
+          // Distance from the decor to the camera -> road point segment.
+          const ex = sp[k] - cx
+          const ez = sp[k + 1] - cz
+          const t = clamp(((x - cx) * ex + (z - cz) * ez) / (ex * ex + ez * ez), 0, 1)
+          const ox = cx + ex * t - x
+          const oz = cz + ez * t - z
+          // Only counts if it is taller than the sightline at that point.
+          if (ox * ox + oz * oz < rr * rr && d.h > 4.6 * (1 - t) * 0.7) ok = false
+        }
+      }
+
+      const target = ok ? 1 : 0
+      d.vis = d.vis === null || onRoad ? target : d.vis + (target - d.vis) * 0.2
+      d.obj.visible = d.vis > 0.03
+      if (!d.obj.visible) continue
+      d.obj.scale.setScalar(d.vis)
+      d.obj.position.set(x, 0, z)
       d.obj.rotation.y = -pt.th
     }
   }
