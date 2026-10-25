@@ -15,6 +15,7 @@ import {
   CylinderGeometry,
   Color,
   DirectionalLight,
+  DoubleSide,
   EdgesGeometry,
   Fog,
   Group,
@@ -40,6 +41,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import { shade } from '../lib/colors.js'
+import { N as PATH_N, Path, S_MIN, STEP, TrackPlan } from './track3d.js'
 
 const TRACK_W = 3.6
 const CELL = 0.6
@@ -142,6 +144,10 @@ export class Renderer3D {
     this.avatarKey = ''
     this.flashApplied = 0
     this.cube = new BoxGeometry(1, 1, 1)
+    this.path = new Path()
+    this.plan = null
+    this.lastS = null
+    this.pose = { phi: 0, tx: 0, tz: 0, sky: 0 }
 
     // Particles.
     this.pPos = new Float32Array(MAX_PARTICLES * 3)
@@ -238,23 +244,26 @@ export class Renderer3D {
       stage.add(sun)
     }
 
-    // Ground (sides + track), scrolling textures.
-    const len = 200
-    const sideTex = canvasTex(64, T.side, { nearest: world.theme !== 'grid' })
-    sideTex.repeat.set(len / 2, 40 / 2)
-    this.sideTex = sideTex
-    const side = new Mesh(new PlaneGeometry(len, 80), new MeshBasicMaterial({ map: sideTex }))
-    side.rotation.x = -Math.PI / 2
-    side.position.set(len / 2 - 20, 0, 0)
-    stage.add(side)
+    // The track is a ribbon that follows the curved path (rebuilt every frame); the
+    // surrounding ground is one big plane whose pose follows the world as it turns.
+    this.plan = new TrackPlan({ first: 60, ...(world.track ?? { straight: [30, 60], weights: { left: 1, right: 1, uturn: 1 } }) })
+    this.lastS = null
+    this.pose = { phi: 0, tx: 0, tz: 0, sky: 0 }
 
-    const trackTex = canvasTex(64, T.track ?? T.side, { nearest: world.theme !== 'grid' })
-    trackTex.repeat.set(len / 1, TRACK_W / 1)
-    this.trackTex = trackTex
-    const track = new Mesh(new PlaneGeometry(len, TRACK_W + 0.4), new MeshBasicMaterial({ map: trackTex }))
-    track.rotation.x = -Math.PI / 2
-    track.position.set(len / 2 - 20, 0.01, 0)
-    stage.add(track)
+    this.groundFrame = new Group()
+    this.skyFrame = new Group()
+    stage.add(this.groundFrame, this.skyFrame)
+
+    const sideTex = canvasTex(64, T.side, { nearest: world.theme !== 'grid' })
+    sideTex.repeat.set(300, 300) // 600 units wide, one tile = 2 units
+    const side = new Mesh(new PlaneGeometry(600, 600), new MeshBasicMaterial({ map: sideTex }))
+    side.rotation.x = -Math.PI / 2
+    this.groundFrame.add(side)
+
+    const ribbonMat = (map, extra = {}) => new MeshBasicMaterial({ map, side: DoubleSide, polygonOffset: true, ...extra })
+    const nearest = world.theme !== 'grid'
+    this.trackMesh = this.makeRibbon(ribbonMat(canvasTex(64, T.track ?? T.side, { nearest }), { polygonOffsetFactor: -1, polygonOffsetUnits: -1 }))
+    stage.add(this.trackMesh)
 
     // The pink Slipstream lane with streaming chevrons.
     const laneTex = canvasTex(128, (c, n) => {
@@ -273,19 +282,27 @@ export class Renderer3D {
       c.lineTo(38, 100)
       c.stroke()
     })
-    laneTex.repeat.set(len / 1.6, 1)
-    this.laneTex = laneTex
-    this.laneMat = new MeshBasicMaterial({ map: laneTex, transparent: true, opacity: 0.8 })
-    const lane = new Mesh(new PlaneGeometry(len, 1.7), this.laneMat)
-    lane.rotation.x = -Math.PI / 2
-    lane.position.set(len / 2 - 20, 0.02, 0)
-    stage.add(lane)
+    this.laneMat = ribbonMat(laneTex, { transparent: true, opacity: 0.8, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+    this.laneMesh = this.makeRibbon(this.laneMat)
+    stage.add(this.laneMesh)
 
-    // Rails along the track.
-    for (const z of [-TRACK_W / 2 - 0.25, TRACK_W / 2 + 0.25]) {
-      const rail = new Mesh(new BoxGeometry(len, 0.4, 0.22), world.theme === 'grid' ? new MeshBasicMaterial({ color: T.rail }) : this.mat(T.rail))
-      rail.position.set(len / 2 - 20, 0.2, z)
-      stage.add(rail)
+    // Rails: top + inner and outer walls on each side.
+    const railTop = new MeshBasicMaterial({ color: T.rail, side: DoubleSide })
+    const railWall = new MeshBasicMaterial({ color: shade(T.rail, -0.25), side: DoubleSide })
+    this.rails = []
+    for (const sd of [-1, 1]) {
+      const a0 = sd * (TRACK_W / 2 + 0.25)
+      const a1 = sd * (TRACK_W / 2 + 0.47)
+      for (const [lat0, y0, lat1, y1, m] of [
+        [a0, 0.4, a1, 0.4, railTop],
+        [a0, 0, a0, 0.4, railWall],
+        [a1, 0.4, a1, 0, railWall],
+      ]) {
+        const mesh = this.makeRibbon(m)
+        mesh.userData = { lat0, y0, lat1, y1 }
+        stage.add(mesh)
+        this.rails.push(mesh)
+      }
     }
 
     this.buildDecor(world.theme, stage)
@@ -295,11 +312,10 @@ export class Renderer3D {
   buildDecor(theme, stage) {
     this.decor = []
     this.clouds = []
-    const add = (obj, x, z, spin = 0) => {
-      obj.position.x = x
-      obj.position.z = z
+    // Decor is pinned to the track: distance along it (S0) plus a lateral offset.
+    const add = (obj, off, lat) => {
       stage.add(obj)
-      this.decor.push({ obj, spin })
+      this.decor.push({ obj, off, lat, S0: null })
     }
     const N = 70
     for (let i = 0; i < N; i++) {
@@ -363,7 +379,7 @@ export class Renderer3D {
           g.add(oct)
         }
       }
-      add(g, x, z, theme === 'grid' ? 0 : 0)
+      add(g, x, z)
     }
 
     if (theme === 'voxel' || theme === 'obby') {
@@ -375,15 +391,127 @@ export class Renderer3D {
           b.position.set(k * 2.5 - 2.5, k === 1 ? 0.6 : 0, rand(-1, 1))
           c.add(b)
         }
-        c.position.set(rand(-10, SPAN - 10), rand(14, 22), rand(-30, 30))
-        stage.add(c)
+        const ang = rand(0, Math.PI * 2)
+        const rad = rand(50, 150)
+        c.position.set(Math.cos(ang) * rad, rand(14, 22), Math.sin(ang) * rad)
+        this.skyFrame.add(c)
         this.clouds.push(c)
       }
       const sun = new Mesh(new PlaneGeometry(10, 10), new MeshBasicMaterial({ color: 0xfff3a0, fog: false }))
       sun.position.set(110, 36, -25)
       sun.rotation.y = -Math.PI / 2
-      stage.add(sun)
+      this.skyFrame.add(sun)
     }
+  }
+
+  // ---- curved track --------------------------------------------------------
+
+  makeRibbon(material) {
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new BufferAttribute(new Float32Array(PATH_N * 6), 3))
+    geo.setAttribute('uv', new BufferAttribute(new Float32Array(PATH_N * 4), 2))
+    const idx = []
+    for (let i = 0; i < PATH_N - 1; i++) {
+      const a = i * 2
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+    }
+    geo.setIndex(idx)
+    const mesh = new Mesh(geo, material)
+    mesh.frustumCulled = false
+    return mesh
+  }
+
+  // Lay a strip along the path: lateral offsets lat0 / lat1 at heights y0 / y1.
+  fillRibbon(mesh, lat0, y0, lat1, y1, uOffset, tile, vMul) {
+    const { px, pz, th } = this.path
+    const pos = mesh.geometry.attributes.position.array
+    const uv = mesh.geometry.attributes.uv.array
+    for (let i = 0; i < PATH_N; i++) {
+      const nx = -Math.sin(th[i])
+      const nz = Math.cos(th[i])
+      const o = i * 6
+      pos[o] = px[i] + nx * lat0
+      pos[o + 1] = y0
+      pos[o + 2] = pz[i] + nz * lat0
+      pos[o + 3] = px[i] + nx * lat1
+      pos[o + 4] = y1
+      pos[o + 5] = pz[i] + nz * lat1
+      const u = (uOffset + S_MIN + i * STEP) / tile
+      const k = i * 4
+      uv[k] = u
+      uv[k + 1] = 0
+      uv[k + 2] = u
+      uv[k + 3] = vMul
+    }
+    mesh.geometry.attributes.position.needsUpdate = true
+    mesh.geometry.attributes.uv.needsUpdate = true
+  }
+
+  fillRibbons(S) {
+    const m = S % 64 // 64 is a whole number of both tile lengths, so the wrap is seamless
+    const half = (TRACK_W + 0.4) / 2
+    this.fillRibbon(this.trackMesh, -half, 0.01, half, 0.01, m, 1, TRACK_W + 0.4)
+    this.fillRibbon(this.laneMesh, -0.85, 0.02, 0.85, 0.02, m, 1.6, 1)
+    for (const r of this.rails) {
+      const { lat0, y0, lat1, y1 } = r.userData
+      this.fillRibbon(r, lat0, y0, lat1, y1, m, 1, 1)
+    }
+  }
+
+  // Ground and sky are fixed in the world, so as the track bends under the avatar they
+  // slide back and rotate the opposite way.
+  updateWorldFrames(S, dS) {
+    const P = this.pose
+    const dth = this.plan.curv(S) * dS
+    const c = Math.cos(-dth)
+    const sn = Math.sin(-dth)
+    let x = P.tx - dS
+    let z = P.tz
+    ;[x, z] = [x * c - z * sn, x * sn + z * c]
+    P.phi -= dth
+    P.sky -= dth
+    // The ground texture repeats every 2 units along its own axes: wrap so it never drifts away.
+    const cp = Math.cos(P.phi)
+    const sp = Math.sin(P.phi)
+    let ax = x * cp + z * sp
+    let az = -x * sp + z * cp
+    ax -= 2 * Math.round(ax / 2)
+    az -= 2 * Math.round(az / 2)
+    P.tx = ax * cp - az * sp
+    P.tz = ax * sp + az * cp
+    this.groundFrame.position.set(P.tx, 0, P.tz)
+    this.groundFrame.rotation.y = -P.phi
+    this.skyFrame.rotation.y = -P.sky
+    for (const cl of this.clouds) {
+      cl.position.x -= dS * 0.2
+      if (cl.position.x < -160) cl.position.x += 320
+    }
+  }
+
+  placeDecor(S) {
+    for (const d of this.decor) {
+      if (d.S0 === null) d.S0 = S + d.off + 10
+      let s = d.S0 - S
+      if (s < -12) {
+        d.S0 += SPAN
+        s += SPAN
+      }
+      // Keep scenery off the track on the inside of tight bends.
+      const k = this.plan.curv(d.S0)
+      let lat = d.lat
+      if (lat * k > 0.7) lat = Math.sign(lat) * (0.7 / Math.abs(k))
+      d.obj.visible = Math.abs(lat) > 3.3 && s < 128
+      if (!d.obj.visible) continue
+      const pt = this.path.at(s)
+      d.obj.position.set(pt.x - Math.sin(pt.th) * lat, 0, pt.z + Math.cos(pt.th) * lat)
+      d.obj.rotation.y = -pt.th
+    }
+  }
+
+  // Tell the UI about the next turn a moment before it arrives.
+  announceTurns(S) {
+    const t = this.plan.nextTurn(S, 30)
+    if (t) this.e.emit('turn', { kind: t.kind })
   }
 
   // ---- obstacles -----------------------------------------------------------
@@ -467,9 +595,12 @@ export class Renderer3D {
       }
       seen.add(o)
       const rc = e.rectOf(o)
-      const x = (rc.x + rc.w / 2 - e.orbX) / u
-      g.visible = x > -8 && x < 90
-      g.position.x = x
+      const so = (rc.x + rc.w / 2 - e.orbX) / u
+      g.visible = so > -8 && so < 125
+      const pt = this.path.at(so)
+      g.position.x = pt.x
+      g.position.z = pt.z
+      g.rotation.y = -pt.th
       if (o.type === 'floor' || o.type === 'wide') {
         g.scale.y = Math.max(0.05, rc.h / u / g.userData.hBase)
       } else if (o.type === 'ceil') {
@@ -558,20 +689,21 @@ export class Renderer3D {
 
     if (this.avatarKey !== `${e.world.avatar}|${e.playerColor}`) this.buildAvatar()
 
-    // Scroll ground and decor by the same distance the engine scrolled obstacles.
-    const dist = (e.bgOffset - (this.lastBg ?? e.bgOffset)) / u
-    this.lastBg = e.bgOffset
-    this.trackTex.offset.x += dist / 1
-    this.sideTex.offset.x += dist / 2
-    this.laneTex.offset.x += dist / 1.6
-    for (const d of this.decor) {
-      d.obj.position.x -= dist
-      if (d.obj.position.x < -12) d.obj.position.x += SPAN
+    // Distance travelled along the track (the engine resets bgOffset on a new run).
+    const S = e.bgOffset / u
+    if (this.lastS === null || S < this.lastS - 1e-6) {
+      this.plan = new TrackPlan({ first: 60, ...(this.world.track ?? { straight: [30, 60], weights: { left: 1, right: 1, uturn: 1 } }) })
+      this.pose = { phi: 0, tx: 0, tz: 0, sky: 0 }
+      for (const d of this.decor) d.S0 = null
+      this.lastS = S
     }
-    for (const c of this.clouds) {
-      c.position.x -= dist * 0.25
-      if (c.position.x < -20) c.position.x += SPAN
-    }
+    const dS = S - this.lastS
+    this.lastS = S
+    this.path.update(this.plan, S)
+    this.updateWorldFrames(S, dS)
+    this.announceTurns(S)
+    this.fillRibbons(S)
+    this.placeDecor(S)
 
     this.syncObstacles()
 
@@ -612,8 +744,13 @@ export class Renderer3D {
       shy = (Math.random() - 0.5) * e.shake * 0.5
     }
     // High enough that the avatar never hides what is coming.
-    cam.position.set(-7.0, 4.6 + (Y - R) * 0.3 + shy, 0.0 + shx)
-    cam.lookAt(4.5, 0.3 + (Y - R) * 0.15, 0)
+    // The chase camera rides the track behind the avatar and looks into the bend.
+    const back = this.path.at(-6.5)
+    const cx = back.x - Math.sin(back.th) * shx
+    const cz = back.z + Math.cos(back.th) * shx
+    const ahead = this.path.at(3) // aim a little ahead so tight bends keep the avatar in frame
+    cam.position.set(cx, 4.6 + (Y - R) * 0.3 + shy, cz)
+    cam.lookAt(ahead.x, 0.3 + (Y - R) * 0.15, ahead.z)
 
     // Speed feel: widen FOV with the multiplier.
     const base = cam.aspect < 0.8 ? 74 : 62
@@ -641,9 +778,10 @@ export class Renderer3D {
       if (p.z === undefined) p.z = (Math.random() - 0.5) * 0.5
       const a = clamp(p.life / p.max, 0, 1)
       const col = this.color(p.color)
-      this.pPos[i * 3] = (p.x - e.orbX) / u
+      const pt = this.path.at((p.x - e.orbX) / u)
+      this.pPos[i * 3] = pt.x - Math.sin(pt.th) * p.z
       this.pPos[i * 3 + 1] = (e.floorTop - p.y) / u
-      this.pPos[i * 3 + 2] = p.z
+      this.pPos[i * 3 + 2] = pt.z + Math.cos(pt.th) * p.z
       const k = a * (p.g === 0 ? 0.55 : 1) // trail particles stay subtle so they never hide the avatar
       this.pCol[i * 3] = col.r * k
       this.pCol[i * 3 + 1] = col.g * k

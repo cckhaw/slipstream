@@ -20,9 +20,11 @@ npm run build    # production bundle in dist/ (three.js is lazy-loaded for 3D wo
 | Neon Conduit | 2D | The original: floor and ceiling lasers |
 | Pixel Quarry | 2D | Lava pits, TNT stacks, block walls |
 | Starship Drift | 2D | Low gravity, air-jet gusts, ceiling pipes |
-| Voxel Valley | 3D | Heavy gravity, long walls, lava rivers |
-| Obby Rush | 3D | Fast, with bricks that pulse up and down |
-| Neon Void | 3D | Everything at once, at high speed |
+| Voxel Valley | 3D | Heavy gravity, long walls, lava rivers; winding road (left / right / U-turns) |
+| Obby Rush | 3D | Fast, pulsing bricks, frequent turns and U-turns |
+| Neon Void | 3D | Everything at once, at high speed, the most U-turns |
+
+3D worlds follow a curved road: `src/game/track3d.js` plans straights, left / right turns and U-turns (per-world mix in `worlds.js`), and the renderer bends the track, scenery, obstacles and camera along it. The jump gameplay is unchanged; a "turn ahead" cue appears in the HUD 30 units before each bend.
 
 World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, moving barriers, gusts). Adding a world is one entry there plus a theme in `render2d.js` / `render3d.js`.
 
@@ -36,7 +38,8 @@ Players pick a name and colour once; the profile is stored in `localStorage` so 
 | --- | --- |
 | `src/game/engine.js` | Physics, spawning, collisions, world rules, tutorial gating, main loop |
 | `src/game/render2d.js` | Canvas renderer: neon / quarry / ship themes, orb / cube / Zip avatars |
-| `src/game/render3d.js` | three.js chase-cam renderer: voxel / obby / grid themes |
+| `src/game/render3d.js` | three.js chase-cam renderer: voxel / obby / grid themes, curved track |
+| `src/game/track3d.js` | Track planner and path sampler for 3D turns |
 | `src/game/audio.js` | Synthesised sound effects (Web Audio) |
 | `src/lib/` | Storage, leaderboard + profile, colours |
 | `src/components/` | Chunky UI kit (`ui.jsx`), menus, world select, leaderboard, HUD, tutorial |
