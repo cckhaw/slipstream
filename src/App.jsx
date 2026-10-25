@@ -4,10 +4,11 @@ import { AudioEngine } from './game/audio.js'
 import { getWorld } from './game/worlds.js'
 import * as store from './lib/storage.js'
 import * as lb from './lib/leaderboard.js'
+import { seedFromUrl } from './lib/seed.js'
 import Hud from './components/Hud.jsx'
 import Menu from './components/Menu.jsx'
 import PauseMenu from './components/PauseMenu.jsx'
-import GameOver from './components/GameOver.jsx'
+import GameOverModal from './components/GameOverModal'
 import Tutorial from './components/Tutorial.jsx'
 import ProfileSetup from './components/ProfileSetup.jsx'
 import InstallTip from './components/InstallTip.jsx'
@@ -45,6 +46,8 @@ export default function App() {
   const [go, setGo] = useState(false)
   const [popup, setPopup] = useState(null)
   const [toast, setToast] = useState(null)
+  // A shared link (?seed=V7K3F9) challenges the player to the same course in the same world.
+  const [challenge, setChallenge] = useState(() => seedFromUrl())
   const [turn, setTurn] = useState(null)
 
   const screenRef = useRef(screen)
@@ -76,13 +79,14 @@ export default function App() {
     },
     popup: ({ text }) => flash(setPopup, text, 900, 'popup'),
     turn: ({ kind, dir }) => flash(setTurn, { kind, dir, id: Date.now() }, 2400, 'turn'),
-    gameover: async ({ score }) => {
+    gameover: async ({ score, maxMult, events, seed }) => {
       const w = getWorld(worldRef.current)
       const p = profileRef.current
       // Show the result at once from what this device knows, then swap in the global board.
       const local = p && score > 0 ? lb.recordScore(w.id, p, score) : null
       setBest(local?.best ?? lb.bestFor(w.id, p))
-      setResult({ score, isNewBest: local?.isNewBest ?? false, rank: local?.rank ?? null, view: local ?? lb.instantView(w.id, p) })
+      const run = { score, maxMult: maxMult ?? 1, events: events ?? [], seed: seed ?? '' }
+      setResult({ ...run, isNewBest: local?.isNewBest ?? false, rank: local?.rank ?? null, view: local ?? lb.instantView(w.id, p) })
       setScreen('over')
       if (local) {
         const v = await lb.syncScore(w.id, p)
@@ -112,7 +116,7 @@ export default function App() {
   }, [])
 
   const startRun = useCallback(
-    async (id = worldRef.current) => {
+    async (id = worldRef.current, seed) => {
       const eng = engineRef.current
       const w = getWorld(id)
       setWorldId(w.id)
@@ -128,7 +132,7 @@ export default function App() {
         return
       }
       eng.playerColor = profileRef.current?.color ?? eng.playerColor
-      eng.startRun()
+      eng.startRun(seed)
       setHud(EMPTY_HUD)
       setBest(lb.bestFor(w.id, profileRef.current))
       lb.prefetch(w.id, profileRef.current) // warms the server and database before game over
@@ -136,6 +140,18 @@ export default function App() {
     },
     [flash],
   )
+
+  const playChallenge = useCallback(() => {
+    if (!challenge) return
+    const { worldId: id, seed } = challenge
+    setChallenge(null)
+    try {
+      window.history.replaceState(null, '', window.location.pathname) // the link is used up
+    } catch {
+      /* ignore */
+    }
+    startRun(id, seed)
+  }, [challenge, startRun])
 
   const skipTutorial = useCallback(() => {
     store.write(store.TUTORIAL_KEY, '1')
@@ -299,6 +315,9 @@ export default function App() {
             setLbWorld(worldId)
             setScreen('leaderboard')
           }}
+          challenge={challenge}
+          onPlayChallenge={playChallenge}
+          onDismissChallenge={() => setChallenge(null)}
           onTutorial={startTutorial}
           onEditProfile={() => setScreen('profile')}
           onToggleMute={toggleMute}
@@ -340,7 +359,7 @@ export default function App() {
       )}
       {screen === 'paused' && <PauseMenu muted={muted} musicOn={musicOn} onResume={resume} onQuit={toMenu} onToggleMute={toggleMute} onToggleMusic={toggleMusic} />}
       {screen === 'over' && (
-        <GameOver
+        <GameOverModal
           world={world}
           result={result}
           profile={profile}

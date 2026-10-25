@@ -42,6 +42,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import { shade } from '../lib/colors.js'
+import { rngFromSeed } from '../lib/seed.js'
 import { N as PATH_N, Path, S_MIN, STEP, TrackPlan } from './track3d.js'
 
 const TRACK_W = 3.6
@@ -827,7 +828,7 @@ export class Renderer3D {
     // Distance travelled along the track (the engine resets bgOffset on a new run).
     const S = e.bgOffset / u
     if (this.lastS === null || S < this.lastS - 1e-6) {
-      this.plan = new TrackPlan({ first: 60, ...(this.world.track ?? { straight: [30, 60], weights: { left: 1, right: 1, uturn: 1 } }) })
+      this.plan = new TrackPlan({ first: 60, rng: e.seed ? rngFromSeed(e.seed, 'track') : undefined, ...(this.world.track ?? { straight: [30, 60], weights: { left: 1, right: 1, uturn: 1 } }) })
       this.pose = { phi: 0, tx: 0, tz: 0, sky: 0 }
       for (const d of this.decor) d.S0 = null
       this.lastS = S

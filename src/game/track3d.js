@@ -7,7 +7,6 @@
 // (screen right).
 
 const TAU = Math.PI * 2
-const rand = (a, b) => a + Math.random() * (b - a)
 
 export const S_MIN = -14
 export const S_MAX = 132
@@ -21,6 +20,7 @@ export class TrackPlan {
   // cfg: { first, straight: [min, max], weights: { left, right, uturn } }
   constructor(cfg) {
     this.cfg = cfg
+    this.rnd = cfg.rng ?? Math.random // seeded for challenge runs
     this.segs = []
     this.end = 0
     this.add('straight', cfg.first ?? 60, 0)
@@ -36,14 +36,14 @@ export class TrackPlan {
     while (this.end < upTo) {
       const last = this.segs[this.segs.length - 1]
       if (last.kind === 'straight') {
-        const roll = Math.random() * (weights.left + weights.right + weights.uturn)
-        const dir = Math.random() < 0.5 ? -1 : 1
+        const roll = this.rnd() * (weights.left + weights.right + weights.uturn)
+        const dir = this.rnd() < 0.5 ? -1 : 1
         if (roll < weights.left) this.add('left', TURN_LEN.left, -Math.PI / 2)
         else if (roll < weights.left + weights.right) this.add('right', TURN_LEN.right, Math.PI / 2)
         else this.add('uturn', TURN_LEN.uturn, dir * Math.PI)
       } else {
         // Breathing room after a turn (longer after a U-turn).
-        this.add('straight', rand(straight[0], straight[1]) + (last.kind === 'uturn' ? 15 : 0), 0)
+        this.add('straight', (straight[0] + this.rnd() * (straight[1] - straight[0])) + (last.kind === 'uturn' ? 15 : 0), 0)
       }
     }
   }

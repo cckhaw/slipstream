@@ -31,6 +31,22 @@ World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, 
 ## Music
 Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Each track is a 16-bar form (verse, lift, a bridge in a new chord progression, outro) with a lead melody, drum fills, risers and crashes, and gets brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
 
+## Share and challenge a run
+Game Over is an iOS-style glass sheet (`src/components/GameOverModal.tsx`) showing Final Score, Max Multiplier, the run's **Seed ID**, an emoji scorecard of the run and a one-tap **Challenge a friend** button. The scorecard maps telemetry in order: `⚡` slipstream (built another multiplier level on the lane), `✨` near miss, `🟩` clean pass, `💥` crash; long runs are squeezed into at most 24 cells (a near miss beats a slipstream beats a clean pass in each stretch). The share text is
+
+```
+⚡ SLIPSTREAM RUN
+Score: 3,120 | Max: 4.7x
+⚡🟩🟩✨🟩⚡🟩
+🟩🟩✨⚡🟩💥
+Can you beat my line? Play here: https://<host>/?seed=V7K3F9
+```
+Sharing uses `navigator.share()` where it exists (phones), otherwise the clipboard (with a legacy fallback) and a 2.5 s "Copied to Clipboard!" state (`src/lib/share.ts`).
+
+**Seeds**: every run has a six-character seed. The first letter is the world (N Neon Conduit, Q Pixel Quarry, S Starship Drift, V Voxel Valley, O Obby Rush, G Neon Void), the rest is random. The same seed gives the same obstacle order (each spawn has its own seeded random stream) and the same turns on the 3D track. Opening `/?seed=V7K3F9` shows a "Challenge from a friend" card on the menu that starts that world with that seed. The seed fixes the course, not your pace: obstacle sizes still adapt to your multiplier, and the danger level is driven by your score. `src/lib/seed.js` has the generator, parser and PRNG.
+
+The project now also has a `tsconfig.json` (`npm run typecheck`); the rest of the code is still JavaScript, and Vite compiles the `.ts` / `.tsx` files without extra setup.
+
 ## World list and home-screen reminder
 The world list opens on a **2D Worlds | 3D Worlds** switch at the top (side by side, remembered next time, defaulting to the kind of the world you last played), so the 3D worlds are one tap away on a phone instead of below the fold. On touch devices that were not launched from a saved bookmark / installed app, the menu shows a short, dismissible "Add to Home Screen" reminder with the right steps for iOS (Share > Add to Home Screen) or Android (menu > Add to Home screen, or an Install button when the browser offers one). It disappears after 12 seconds; closing it by hand hides it for 3 days. It never shows in standalone mode or on desktop (`src/components/InstallTip.jsx`).
 
@@ -69,7 +85,7 @@ Scores live in Neon Postgres (free plan, from the Vercel Marketplace) behind `ap
 | `src/game/weather.js` | Weather / time-of-day director and overlay drawing (all worlds) |
 | `src/game/audio.js` | Synthesised sound effects (Web Audio) |
 | `api/leaderboard.js` | Global leaderboard endpoint (Neon Postgres-backed serverless function) |
-| `src/lib/` | Storage, leaderboard + profile, colours |
+| `src/lib/` | Storage, leaderboard + profile, colours, seeds (`seed.js`), share text (`share.ts`) |
 | `src/components/` | Chunky UI kit (`ui.jsx`), menus, world select, leaderboard, HUD, tutorial |
 | `tailwind.config.js` | Palette plus `chunk`, `panel`, `slot`, `title-outline`, `title-pixel` and `glass` utilities |
 
