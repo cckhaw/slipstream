@@ -548,13 +548,25 @@ export class Renderer3D {
     g.userData.bottom0 = bottom0
 
     if (this.theme === 'grid') {
-      const col = ceil ? 0xff3b30 : 0xff9500
-      const box = new Mesh(new BoxGeometry(depth, hBase, TRACK_W), new MeshBasicMaterial({ color: col, transparent: true, opacity: 0.32, depthWrite: false }))
-      if (ceil) g.userData.fade = [{ mat: box.material, base: 0.32, min: 0.12 }]
-      box.position.y = ceil ? bottom0 + hBase / 2 : hBase / 2
-      const edges = new LineSegments(new EdgesGeometry(box.geometry), new LineBasicMaterial({ color: col }))
-      edges.position.copy(box.position)
-      g.add(box, edges)
+      if (ceil) {
+        // Hanging blocks stay see-through so they never hide what is coming.
+        const box = new Mesh(new BoxGeometry(depth, hBase, TRACK_W), new MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.32, depthWrite: false }))
+        g.userData.fade = [{ mat: box.material, base: 0.32, min: 0.12 }]
+        box.position.y = bottom0 + hBase / 2
+        const edges = new LineSegments(new EdgesGeometry(box.geometry), new LineBasicMaterial({ color: 0xff3b30 }))
+        edges.position.copy(box.position)
+        g.add(box, edges)
+      } else {
+        // Ground obstacles are solid: a glowing orange block with a bright outline.
+        const box = new Mesh(
+          new BoxGeometry(depth, hBase, TRACK_W),
+          new MeshLambertMaterial({ color: '#8A4A00', emissive: '#FF9500', emissiveIntensity: 0.6 }),
+        )
+        box.position.y = hBase / 2
+        const edges = new LineSegments(new EdgesGeometry(box.geometry), new LineBasicMaterial({ color: 0xffd9a0 }))
+        edges.position.copy(box.position)
+        g.add(box, edges)
+      }
       return g
     }
 

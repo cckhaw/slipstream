@@ -21,3 +21,4 @@ export function write(key, value) {
 export const TUTORIAL_KEY = 'tutorialDone'
 export const BEST_KEY = 'best'
 export const MUTED_KEY = 'muted'
+export const MUSIC_KEY = 'music'

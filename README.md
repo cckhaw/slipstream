@@ -28,6 +28,9 @@ npm run build    # production bundle in dist/ (three.js is lazy-loaded for 3D wo
 
 World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, moving barriers, gusts). Adding a world is one entry there plus a theme in `render2d.js` / `render3d.js`.
 
+## Music
+Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Tracks get brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
+
 ## Profile and leaderboards
 Players pick a name and colour once; the profile is stored in `localStorage` so returning players are recognised and never retype it. Each world keeps a Top 10 (plus your own rank if you fall outside it).
 

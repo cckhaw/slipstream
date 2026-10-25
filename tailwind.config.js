@@ -66,6 +66,7 @@ export default {
           '100%': { transform: 'translateY(0) scale(1)', opacity: '1' },
         },
         fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+        shrink: { from: { transform: 'scaleX(1)' }, to: { transform: 'scaleX(0)' } },
         wiggle: {
           '0%,100%': { transform: 'rotate(-4deg)' },
           '50%': { transform: 'rotate(4deg)' },
@@ -89,6 +90,7 @@ export default {
         rise: 'rise 0.45s cubic-bezier(0.2,0.8,0.2,1) both',
         'fade-in': 'fadeIn 0.3s ease-out both',
         'go-out': 'goOut 1.1s ease-out both',
+        shrink: 'shrink 5s linear forwards',
         wiggle: 'wiggle 0.5s ease-in-out infinite',
         floaty: 'floaty 2.4s ease-in-out infinite',
       },

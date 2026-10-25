@@ -12,10 +12,11 @@ import Tutorial from './components/Tutorial.jsx'
 import ProfileSetup from './components/ProfileSetup.jsx'
 import WorldSelect from './components/WorldSelect.jsx'
 import Leaderboard from './components/Leaderboard.jsx'
-import { Panel, Tag, TurnArrow } from './components/ui.jsx'
+import { CloseIcon, Panel, Tag, TurnArrow } from './components/ui.jsx'
 
 const EMPTY_HUD = { score: 0, mult: 1, charge: 0, progress: 0 }
 const LAST_WORLD_KEY = 'lastWorld'
+const INTRO_MS = 5000 // how long the world intro stays up (a countdown bar shows the time left)
 
 export default function App() {
   const canvas2dRef = useRef(null)
@@ -26,7 +27,8 @@ export default function App() {
   const timers = useRef({})
 
   const [muted, setMuted] = useState(() => store.read(store.MUTED_KEY) === '1')
-  const audio = useMemo(() => new AudioEngine(muted), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const [musicOn, setMusicOn] = useState(() => store.read(store.MUSIC_KEY) !== '0')
+  const audio = useMemo(() => new AudioEngine(muted, musicOn), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Returning players are recognised from localStorage and never re-type their name.
   const [profile, setProfile] = useState(() => lb.loadProfile())
@@ -94,6 +96,11 @@ export default function App() {
     setScreen('menu')
   }, [])
 
+  const dismissIntro = useCallback(() => {
+    clearTimeout(timers.current.intro)
+    setIntro(null)
+  }, [])
+
   const startTutorial = useCallback(async () => {
     const eng = engineRef.current
     await eng.setWorld('neon')
@@ -125,7 +132,7 @@ export default function App() {
       setHud(EMPTY_HUD)
       setBest(lb.bestFor(w.id, profileRef.current))
       setScreen('playing')
-      flash(setIntro, w, 3400, 'intro')
+      flash(setIntro, { ...w, id: `${w.id}-${Date.now()}` }, INTRO_MS, 'intro')
     },
     [flash],
   )
@@ -166,6 +173,14 @@ export default function App() {
     })
   }, [audio])
 
+  const toggleMusic = useCallback(() => {
+    setMusicOn((on) => {
+      audio.setMusicOn(!on)
+      store.write(store.MUSIC_KEY, !on ? '1' : '0')
+      return !on
+    })
+  }, [audio])
+
   // ---- engine lifecycle ----------------------------------------------------
 
   useEffect(() => {
@@ -186,14 +201,17 @@ export default function App() {
 
   // Auto-pause when the tab/app is backgrounded.
   useEffect(() => {
-    const onHide = () => document.hidden && pause()
+    const onHide = () => {
+      audio.suspend(document.hidden)
+      if (document.hidden) pause()
+    }
     document.addEventListener('visibilitychange', onHide)
     window.addEventListener('blur', pause)
     return () => {
       document.removeEventListener('visibilitychange', onHide)
       window.removeEventListener('blur', pause)
     }
-  }, [pause])
+  }, [pause, audio])
 
   // Keyboard (desktop testing): hold Space / Down.
   useEffect(() => {
@@ -272,6 +290,7 @@ export default function App() {
         <Menu
           profile={profile}
           muted={muted}
+          musicOn={musicOn}
           onPlay={() => setScreen('worlds')}
           onLeaderboard={() => {
             setLbWorld(worldId)
@@ -280,6 +299,7 @@ export default function App() {
           onTutorial={startTutorial}
           onEditProfile={() => setScreen('profile')}
           onToggleMute={toggleMute}
+          onToggleMusic={toggleMusic}
         />
       )}
       {screen === 'worlds' && (
@@ -313,7 +333,7 @@ export default function App() {
           </Panel>
         </div>
       )}
-      {screen === 'paused' && <PauseMenu muted={muted} onResume={resume} onQuit={toMenu} onToggleMute={toggleMute} />}
+      {screen === 'paused' && <PauseMenu muted={muted} musicOn={musicOn} onResume={resume} onQuit={toMenu} onToggleMute={toggleMute} onToggleMusic={toggleMusic} />}
       {screen === 'over' && (
         <GameOver
           world={world}
@@ -329,12 +349,23 @@ export default function App() {
         />
       )}
 
-      {/* World intro banner shown for the first seconds of a run */}
+      {/* World intro banner: translucent, with a countdown bar and a close button */}
       {intro && screen === 'playing' && (
-        <div className="pointer-events-none absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+172px)] flex justify-center px-safe">
-          <Panel className="animate-pop max-w-[320px] !bg-none !bg-[#1B2440]/45 px-4 py-3 text-center backdrop-blur-sm [text-shadow:0_1px_3px_rgba(0,0,0,0.85)]">
+        <div className="absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+172px)] flex justify-center px-safe">
+          <Panel className="animate-pop relative max-w-[330px] overflow-hidden !bg-none !bg-[#1B2440]/45 py-3 pl-4 pr-12 text-center backdrop-blur-sm [text-shadow:0_1px_3px_rgba(0,0,0,0.85)]" role="status">
             <div className="title-pixel text-[18px] leading-none" style={{ textShadow: '0 2px 0 #3F5090, 0 4px 0 #05070C' }}>{intro.name}</div>
             <p className="mt-2 text-[14px] leading-snug text-label-secondary">{intro.challenge}</p>
+            <button
+              type="button"
+              aria-label="Close world info"
+              onClick={dismissIntro}
+              className="chunk btn-dark absolute right-1.5 top-1.5 grid h-11 w-11 place-items-center !rounded-xl"
+            >
+              <CloseIcon />
+            </button>
+            <div className="absolute inset-x-0 bottom-0 h-[5px] bg-black/30" aria-hidden="true">
+              <div key={intro.id} className="h-full origin-left animate-shrink bg-orb" style={{ animationDuration: `${INTRO_MS}ms` }} />
+            </div>
           </Panel>
         </div>
       )}
