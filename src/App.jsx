@@ -332,7 +332,7 @@ export default function App() {
       {/* World intro banner shown for the first seconds of a run */}
       {intro && screen === 'playing' && (
         <div className="pointer-events-none absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+172px)] flex justify-center px-safe">
-          <Panel className="animate-pop max-w-[320px] px-4 py-3 text-center">
+          <Panel className="animate-pop max-w-[320px] !bg-none !bg-[#1B2440]/45 px-4 py-3 text-center backdrop-blur-sm [text-shadow:0_1px_3px_rgba(0,0,0,0.85)]">
             <div className="title-pixel text-[18px] leading-none" style={{ textShadow: '0 2px 0 #3F5090, 0 4px 0 #05070C' }}>{intro.name}</div>
             <p className="mt-2 text-[14px] leading-snug text-label-secondary">{intro.challenge}</p>
           </Panel>
