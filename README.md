@@ -51,7 +51,7 @@ As your score climbs the sky changes, in every 2D and 3D world: day, sunset, nig
 ## Profile and leaderboards
 Players pick a name and colour once; the profile is stored in `localStorage` so returning players are recognised and never retype it. There is **one global Top 10 per world**, shared by every player, plus your own rank if you fall outside it. Boards are padded with clearly labelled `BOT` rivals; only real players' scores are published.
 
-Scores live in Neon Postgres (free plan, from the Vercel Marketplace) behind `api/leaderboard.js`, a Vercel serverless function: a `players` table and a `scores` table holding each player's best score per world; the tables are created on first use. The Neon integration injects `DATABASE_URL` into the Vercel project. Without it the API returns 503 and the game falls back to a device-local board. `src/lib/leaderboard.js` is the only client module that touches scores. Note that scores are reported by the client, so this is a casual board, not cheat-proof.
+Scores live in Neon Postgres (free plan, from the Vercel Marketplace) behind `api/leaderboard.js`, a Vercel serverless function: a `players` table and a `scores` table holding each player's best score per world; the tables are created on first use. The Neon integration injects `DATABASE_URL` into the Vercel project. The database is in Singapore, so `vercel.json` pins the functions to `sin1` (next to it); every request is a single database round trip. Without it the API returns 503 and the game falls back to a device-local board. `src/lib/leaderboard.js` is the only client module that touches scores. Note that scores are reported by the client, so this is a casual board, not cheat-proof.
 
 ## Layout
 | Path | Purpose |
