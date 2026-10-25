@@ -96,6 +96,13 @@ export const CubeIcon = ({ size = 14 }) => (
     <path d="m3 7 9 5 9-5M12 12v10" />
   </svg>
 )
+export const TurnArrow = ({ dir }) => (
+  <I size={22} strokeWidth="3.2">
+    {dir === 'left' && <path d="M19 19v-6a4 4 0 0 0-4-4H6m0 0 4-4M6 9l4 4" />}
+    {dir === 'right' && <path d="M5 19v-6a4 4 0 0 1 4-4h9m0 0-4-4m4 4-4 4" />}
+    {dir === 'uturn' && <path d="M5 20V9a5 5 0 0 1 10 0v11m0 0-3.5-3.5M15 20l3.5-3.5" />}
+  </I>
+)
 export const ChevronDown = ({ size = 56, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
     <path d="m6 6 6 6 6-6" />

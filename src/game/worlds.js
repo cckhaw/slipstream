@@ -66,7 +66,7 @@ export const WORLDS = [
     avatar: 'cube',
     accent: '#7BD34F',
     difficulty: 3,
-    challenge: 'Heavy gravity, long block walls and lava rivers. Big launches, no second chances.',
+    challenge: 'Heavy gravity, long block walls and lava rivers on a winding road with left, right and U-turns.',
     rules: {
       gravity: 1.25,
       launch: 1.12,
@@ -74,6 +74,7 @@ export const WORLDS = [
       weights: { floor: 0.3, wide: 0.3, pit: 0.3, ceil: 0.1 },
       lead: 1.5,
     },
+    track: { straight: [32, 62], weights: { left: 0.4, right: 0.4, uturn: 0.2 } },
   }),
   make({
     id: 'obby',
@@ -83,13 +84,14 @@ export const WORLDS = [
     avatar: 'blob',
     accent: '#FFC83D',
     difficulty: 4,
-    challenge: 'Fast and fiendish. Bricks pulse up and down, so time your launch.',
+    challenge: 'Fast and fiendish. Pulsing bricks, plus tight turns and U-turns that hide what is coming.',
     rules: {
       speed: 1.3,
       moving: 0.6,
       weights: { floor: 0.5, ceil: 0.2, wide: 0.3 },
       lead: 1.5,
     },
+    track: { straight: [24, 48], weights: { left: 0.35, right: 0.35, uturn: 0.3 } },
   }),
   make({
     id: 'grid',
@@ -99,7 +101,7 @@ export const WORLDS = [
     avatar: 'orb',
     accent: '#B14CFF',
     difficulty: 5,
-    challenge: 'Everything at once: ceilings, pits, walls and moving lasers at high speed.',
+    challenge: 'Everything at once, at high speed, with the most U-turns: ceilings, pits, walls and moving lasers.',
     rules: {
       gravity: 1.1,
       speed: 1.18,
@@ -108,6 +110,7 @@ export const WORLDS = [
       after: { ceil: 6, pit: 4, wide: 5 },
       lead: 1.5,
     },
+    track: { straight: [20, 42], weights: { left: 0.3, right: 0.3, uturn: 0.4 } },
   }),
 ]
 

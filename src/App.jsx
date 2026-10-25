@@ -12,7 +12,7 @@ import Tutorial from './components/Tutorial.jsx'
 import ProfileSetup from './components/ProfileSetup.jsx'
 import WorldSelect from './components/WorldSelect.jsx'
 import Leaderboard from './components/Leaderboard.jsx'
-import { Panel, Tag } from './components/ui.jsx'
+import { Panel, Tag, TurnArrow } from './components/ui.jsx'
 
 const EMPTY_HUD = { score: 0, mult: 1, charge: 0, progress: 0 }
 const LAST_WORLD_KEY = 'lastWorld'
@@ -42,6 +42,7 @@ export default function App() {
   const [intro, setIntro] = useState(null)
   const [popup, setPopup] = useState(null)
   const [toast, setToast] = useState(null)
+  const [turn, setTurn] = useState(null)
 
   const screenRef = useRef(screen)
   screenRef.current = screen
@@ -71,6 +72,7 @@ export default function App() {
       timers.current.go = setTimeout(() => setGo(false), 1100)
     },
     popup: ({ text }) => flash(setPopup, text, 900, 'popup'),
+    turn: ({ kind }) => flash(setTurn, kind, 2400, 'turn'),
     gameover: ({ score }) => {
       const w = getWorld(worldRef.current)
       const p = profileRef.current
@@ -334,6 +336,15 @@ export default function App() {
             <div className="title-pixel text-[18px] leading-none" style={{ textShadow: '0 2px 0 #3F5090, 0 4px 0 #05070C' }}>{intro.name}</div>
             <p className="mt-2 text-[14px] leading-snug text-label-secondary">{intro.challenge}</p>
           </Panel>
+        </div>
+      )}
+      {turn && screen === 'playing' && (
+        <div className="pointer-events-none absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+150px)] flex justify-center" role="status">
+          <div className="chunk btn-gold animate-pop flex items-center gap-2 px-4 py-2 font-display text-[17px] font-black">
+            {turn === 'left' && <><TurnArrow dir="left" /> Left turn</>}
+            {turn === 'right' && <>Right turn <TurnArrow dir="right" /></>}
+            {turn === 'uturn' && <><TurnArrow dir="uturn" /> U-turn ahead</>}
+          </div>
         </div>
       )}
       {popup && (
