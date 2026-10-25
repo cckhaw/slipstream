@@ -32,6 +32,16 @@ const AIR_DECAY = 0.02
 const GROUND_DECAY = 0.05
 const HOLD_NEEDED = 1.1 // seconds of riding before the tutorial prompts the jump
 
+// Danger levels: every 10,000 points unlocks harder obstacle kinds (and a little more speed).
+export const TIER_SCORE = 10000
+const TIER_NEW = {
+  1: ['RUSHERS + FLOATERS', ['rush', 'float']],
+  2: ['BLINK LASERS + HURDLES', ['blink', 'hurdles']],
+  3: ['MOVING GATES', ['gate']],
+  4: ['PIT COMBOS', ['combo']],
+}
+const TIER_KINDS = (t) => Object.entries(TIER_NEW).flatMap(([k, [, kinds]]) => (+k <= t ? kinds : []))
+
 const haptic = (p) => {
   try {
     navigator.vibrate?.(p)
@@ -153,6 +163,7 @@ export class Engine {
     this.spawnTimer = 1.6
     this.runTime = 0
     this.lastLevel = 1
+    this.tier = 0
     this.overTimer = 0
     this.overSent = false
     this.releaseBuffer = 0
@@ -297,7 +308,7 @@ export class Engine {
     let target = 0
     if (this.mode === 'idle') target = IDLE_SPEED * s
     else if (this.mode === 'playing' || this.mode === 'tutorial') {
-      target = (BASE_SPEED + SPEED_PER_MULT * (this.mult - 1)) * this.rules.speed * s
+      target = (BASE_SPEED + SPEED_PER_MULT * (this.mult - 1)) * this.rules.speed * s * (1 + 0.025 * Math.min(this.tier, 8))
     }
     this.speed += (target - this.speed) * Math.min(1, rawDt * 3)
 
@@ -306,7 +317,7 @@ export class Engine {
     // Scroll the world.
     const dx = this.speed * sdt
     this.bgOffset += dx
-    for (const o of this.obstacles) o.x -= dx
+    for (const o of this.obstacles) o.x -= dx * (1 + (o.rush || 0))
     this.obstacles = this.obstacles.filter((o) => o.x + o.w > -80)
     for (const st of this.streaks) {
       st.x -= (st.v * dx) / this.W
@@ -318,13 +329,14 @@ export class Engine {
 
     if (this.mode === 'playing') {
       this.score += this.speed * sdt * 0.02 * this.mult
+      this.updateTier()
       this.runTime += sdt
       this.updateGust(sdt)
       this.spawnTimer -= sdt
       if (this.spawnTimer <= 0) {
-        this.spawn()
+        const extra = this.spawn() || 0
         const [a, b] = this.rules.gap
-        this.spawnTimer = rand(a, b) - Math.min(0.25, this.runTime * 0.004)
+        this.spawnTimer = (rand(a, b) - Math.min(0.25, this.runTime * 0.004)) * Math.max(0.7, 1 - 0.04 * this.tier) + extra
       }
       this.collide()
     } else if (this.mode === 'tutorial') {
@@ -517,11 +529,70 @@ export class Engine {
     return 'floor'
   }
 
+  // Check whether a new danger level was reached and announce what it unlocks.
+  updateTier() {
+    const t = Math.floor(this.score / TIER_SCORE)
+    if (t <= this.tier) return
+    this.tier = t
+    const info = TIER_NEW[t]
+    this.emit('popup', { text: `DANGER LEVEL ${t}${info ? `: ${info[0]}` : ''}` })
+    this.audio?.chime()
+  }
+
+  // Advanced obstacle kinds for the current danger level. Returns extra seconds to wait
+  // before the next spawn (patterns take longer to play out).
+  spawnAdvanced(kind, x) {
+    const s = this.s
+    const m = this.mult
+    const air = ((2 * this.launchSpeed(Math.min(m, 3))) / (G_AIR * this.rules.gravity * s)) * this.speed // distance covered by a flat jump
+    const hu = () => Math.min(rand(46, 66) + (m - 1) * 2, 88)
+    const push = (o) => (this.obstacles.push(o), o)
+    switch (kind) {
+      case 'rush': {
+        // Closes in faster than the world scrolls. Only when nothing else is still ahead (no overlaps).
+        if (this.obstacles.some((o) => o.x + o.w > this.orbX)) return this.spawnAdvanced('float', x)
+        push(this.makeObstacle('floor', x, hu())).rush = rand(0.45, 0.7)
+        return 0
+      }
+      case 'float':
+        push(this.makeObstacle('float', x, rand(34, 50), rand(56, 92) * s))
+        return 0
+      case 'blink': {
+        const o = push(this.makeObstacle('floor', x, rand(62, 84), rand(18, 24) * s))
+        o.blink = rand(1.5, 2.1)
+        return 0
+      }
+      case 'hurdles': {
+        const gap = air * 1.3
+        for (let i = 0; i < 3; i++) push(this.makeObstacle('floor', x + i * gap, rand(44, 56), rand(16, 22) * s))
+        return (2 * gap) / Math.max(1, this.speed)
+      }
+      case 'gate': {
+        const o = push(this.makeObstacle('gate', x, 0, rand(20, 26) * s))
+        o.freq = rand(1.6, 2.2)
+        return 0
+      }
+      case 'combo': {
+        // A lava pit with a wall right after it: land, then jump again.
+        const w = clamp(rand(0.35, 0.55) * air, 56 * s, 170 * s)
+        push(this.makeObstacle('pit', x, 0, w))
+        const d = 0.6 * air + 40 * s
+        push(this.makeObstacle('floor', x + w + d, hu(), rand(16, 22) * s))
+        return (w + d) / Math.max(1, this.speed)
+      }
+    }
+    return 0
+  }
+
   spawn() {
     const s = this.s
     const m = this.mult
     let type = this.pickType()
     const x = this.W + Math.max(this.speed * this.rules.lead, 120 * s)
+    if (this.tier >= 1 && Math.random() < Math.min(0.6, 0.22 + 0.07 * (this.tier - 1))) {
+      const kinds = TIER_KINDS(this.tier)
+      return this.spawnAdvanced(kinds[Math.floor(Math.random() * kinds.length)], x)
+    }
     let hu = 0
     let w
     if (type === 'floor' || type === 'wide') {
@@ -539,19 +610,58 @@ export class Engine {
     const o = this.makeObstacle(type, x, hu, w)
     if ((type === 'floor' || type === 'ceil') && Math.random() < this.rules.moving) o.amp = rand(8, 16)
     this.obstacles.push(o)
+    return 0
+  }
+
+  // 0..1 height of a blinking laser: it ramps up before it turns on and drops after.
+  blinkK(o) {
+    const P = o.blink
+    const u = ((this.clock + (o.seed * P) / TAU) % P) / P
+    if (u < 0.5) return 1
+    if (u < 0.58) return 1 - 0.9 * ((u - 0.5) / 0.08)
+    if (u < 0.8) return 0.1
+    return 0.1 + 0.9 * ((u - 0.8) / 0.2)
+  }
+
+  // Gap height of a moving gate, raised by `k` (0..1) of its travel.
+  gateK(o) {
+    return 0.5 + 0.5 * Math.sin(this.clock * o.freq + o.seed)
   }
 
   rectOf(o) {
     const s = this.s
     const osc = o.amp ? o.amp * s * Math.sin(this.clock * o.freq + o.seed) : 0
     if (o.type === 'floor' || o.type === 'wide') {
-      const h = o.hu * s + osc
+      const h = o.hu * s * (o.blink ? this.blinkK(o) : 1) + osc
       return { x: o.x, y: this.floorTop - h, w: o.w, h }
     }
     if (o.type === 'pit') return { x: o.x, y: this.floorTop, w: o.w, h: this.floorH }
+    if (o.type === 'float' || o.type === 'gate') {
+      return { x: o.x, y: 0, w: o.w, h: this.floorTop }
+    }
     // Ceiling barrier: the grounded orb just fits underneath; jumping hits it.
     const bottom = this.floorTop - this.r * 2 - 24 * s - osc
     return { x: o.x, y: 0, w: o.w, h: bottom }
+  }
+
+  // Every solid rectangle of an obstacle (floaters and gates have a different shape).
+  rectsOf(o) {
+    const s = this.s
+    if (o.type === 'float') {
+      const under = this.floorTop - this.r * 2 - 24 * s // underside: the grounded orb just fits beneath
+      const h = o.hu * s
+      return [{ x: o.x, y: under - h, w: o.w, h }]
+    }
+    if (o.type === 'gate') {
+      const gap = this.r * 2 + 54 * s
+      const lift = 70 * s * this.gateK(o) // how far the gap has risen off the floor
+      const gapBottom = this.floorTop - lift
+      return [
+        { x: o.x, y: 0, w: o.w, h: gapBottom - gap },
+        { x: o.x, y: gapBottom, w: o.w, h: lift },
+      ]
+    }
+    return [this.rectOf(o)]
   }
 
   collide() {
@@ -559,18 +669,22 @@ export class Engine {
     const cy = this.y
     const r = this.r
     for (const o of this.obstacles) {
-      const rc = this.rectOf(o)
       if (o.type === 'pit') {
+        const rc = this.rectOf(o)
         // Falling in: on (or skimming) the floor while over the gap.
         if (cy >= this.floorY - r * 0.35 && cx > rc.x + r * 0.3 && cx < rc.x + rc.w - r * 0.3) {
           this.crash(o)
           return
         }
-      } else {
-        const nx = clamp(cx, rc.x, rc.x + rc.w)
-        const ny = clamp(cy, rc.y, rc.y + rc.h)
-        const d = Math.hypot(cx - nx, cy - ny)
-        if (Math.abs(rc.x + rc.w / 2 - cx) < rc.w / 2 + r * 3) o.minD = Math.min(o.minD, d - r)
+      } else if (!(o.blink && this.blinkK(o) < 0.55)) {
+        let d = Infinity
+        for (const rc of this.rectsOf(o)) {
+          if (rc.h <= 0) continue
+          const nx = clamp(cx, rc.x, rc.x + rc.w)
+          const ny = clamp(cy, rc.y, rc.y + rc.h)
+          d = Math.min(d, Math.hypot(cx - nx, cy - ny))
+        }
+        if (Math.abs(o.x + o.w / 2 - cx) < o.w / 2 + r * 3) o.minD = Math.min(o.minD, d - r)
         if (d < r * 0.82) {
           this.crash(o)
           return

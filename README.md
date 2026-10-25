@@ -31,6 +31,18 @@ World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, 
 ## Music
 Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Each track is a 16-bar form (verse, lift, a bridge in a new chord progression, outro) with a lead melody, drum fills, risers and crashes, and gets brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
 
+## Danger levels (advanced obstacles)
+Every 10,000 points unlocks a new danger level: a banner announces it, the world runs about 2.5% faster per level and obstacles come a little closer together. Each level adds new kinds, mixed in with the normal ones (22% of spawns at level 1, up to 60%):
+| Score | Level | New obstacles |
+| --- | --- | --- |
+| 10,000 | 1 | **Rushers**: floor blocks that close in 45-70% faster than the world scrolls (orange streaks). **Floaters**: mid-air slabs, duck under them on the ground or leap over |
+| 20,000 | 2 | **Blink lasers**: floor lasers that retract and rise on a timer (a dashed outline shows their full height). **Hurdles**: three blocks in a row, spaced for a jump rhythm |
+| 30,000 | 3 | **Moving gates**: thin walls whose gap slides up and down; go through low on the ground or time a jump through the high gap |
+| 40,000 | 4 | **Pit combos**: a lava pit with a wall right after it: land, then jump again |
+| 50,000+ | 5+ | No new kinds, just more of everything, faster |
+
+Rules live in `src/game/engine.js` (`TIER_NEW`, `spawnAdvanced`, `rectsOf`); floaters and gates are drawn by `obsAdv` (2D) and the `parts` slabs (3D).
+
 ## Weather and time of day
 As your score climbs the sky changes, in every 2D and 3D world: day, sunset, night (stars and a moon), cloudy, rain, thunderstorm with lightning, wind, fog and snow. Each world has its own cycle and themed names (Acid rain in Neon Conduit, Meteor shower and Ion storm in Starship Drift, Pixel rain in Neon Void...). The first change comes at 800 points, then at 2,000, 3,600, 5,600, 8,000 and 11,000, and every 3,000 after that; the order shifts on later laps. The sky eases over about four seconds, with no pop-up. Rain, wind and thunder have synthesised sound. Weather is visual and audio only: it never changes physics or obstacles. Reduce Motion turns off lightning flashes.
 

@@ -600,11 +600,32 @@ export class Renderer3D {
       return g
     }
 
+    if (o.type === 'float' || o.type === 'gate') {
+      // Slabs repositioned every frame from the engine's rectangles.
+      g.userData.parts = []
+      const col = { voxel: '#7A3FD1', obby: '#E83E8C', grid: '#B14CFF' }[this.theme] ?? '#7A3FD1'
+      for (let i = 0; i < (o.type === 'gate' ? 2 : 1); i++) {
+        // Slabs that reach the sky stay see-through, like ceiling blocks, so they never hide the road.
+        const m = new Mesh(this.cube, new MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false }))
+        m.add(new LineSegments(new EdgesGeometry(this.cube), new LineBasicMaterial({ color: 0xffe9a8 })))
+        g.add(m)
+        g.userData.parts.push(m)
+      }
+      return g
+    }
+
     const ceil = o.type === 'ceil'
     const bottom0 = (e.r * 2 + 24 * e.s) / u
     const hBase = ceil ? CEIL_TOP - bottom0 : Math.max(0.5, (o.hu * e.s) / u)
     g.userData.hBase = hBase
     g.userData.bottom0 = bottom0
+
+    if (o.rush) {
+      // Orange streak trailing behind (toward the horizon) so a fast mover reads as fast.
+      const trail = new Mesh(new BoxGeometry(5, 0.18, TRACK_W * 0.7), new MeshBasicMaterial({ color: 0xff8a1f, transparent: true, opacity: 0.55 }))
+      trail.position.set(depth / 2 + 2.5, Math.min(hBase, 1.2) / 2, 0)
+      g.add(trail)
+    }
 
     if (this.theme === 'grid') {
       if (ceil) {
@@ -701,7 +722,18 @@ export class Renderer3D {
       g.position.x = pt.x
       g.position.z = pt.z
       g.rotation.y = -pt.th
-      if (o.type === 'floor' || o.type === 'wide') {
+      if (g.userData.parts) {
+        e.rectsOf(o).forEach((r, i) => {
+          const m = g.userData.parts[i]
+          m.visible = r.h > 1
+          const top = Math.min((e.floorTop - r.y) / u, CEIL_TOP)
+          const bottom = (e.floorTop - (r.y + r.h)) / u
+          m.scale.set(g.userData.depth, Math.max(0.01, top - bottom), TRACK_W)
+          m.position.y = (top + bottom) / 2
+          const sky = r.y < 1
+          m.material.opacity = sky ? 0.5 * clamp((so + 6) / 18, 0.3, 1) : 0.92
+        })
+      } else if (o.type === 'floor' || o.type === 'wide') {
         g.scale.y = Math.max(0.05, rc.h / u / g.userData.hBase)
       } else if (o.type === 'ceil') {
         g.position.y = (e.floorTop - rc.h) / u - g.userData.bottom0

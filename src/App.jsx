@@ -352,7 +352,11 @@ export default function App() {
           className={`pointer-events-none absolute inset-y-0 flex w-[40%] items-center text-white ${turn.dir < 0 ? 'left-0 justify-start pl-2' : 'right-0 justify-end pr-2'}`}
           aria-hidden="true"
         >
-          <TurnArrow dir={turn.kind === 'uturn' ? 'uturn' : turn.dir < 0 ? 'left' : 'right'} size={230} className="animate-pulse opacity-50 drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]" />
+          <TurnArrow
+            dir={turn.kind === 'uturn' ? 'uturn' : turn.dir < 0 ? 'left' : 'right'}
+            size={230}
+            className={`animate-pulse opacity-50 drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)] ${turn.kind === 'uturn' && turn.dir < 0 ? '-scale-x-100' : ''}`}
+          />
         </div>
       )}
       {popup && (
