@@ -571,7 +571,7 @@ export class Renderer3D {
   // Tell the UI about the next turn a moment before it arrives.
   announceTurns(S) {
     const t = this.plan.nextTurn(S, 30)
-    if (t) this.e.emit('turn', { kind: t.kind })
+    if (t) this.e.emit('turn', { kind: t.kind, dir: Math.sign(t.angle) })
   }
 
   // ---- obstacles -----------------------------------------------------------

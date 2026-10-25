@@ -12,8 +12,8 @@ const rand = (a, b) => a + Math.random() * (b - a)
 const lerp = (a, b, t) => a + (b - a) * t
 
 // Score at which each phase begins; after the list a new phase starts every STEP points.
-export const THRESHOLDS = [0, 300, 700, 1200, 1800, 2500, 3400, 4500, 6000]
-const STEP = 1500
+export const THRESHOLDS = [0, 800, 2000, 3600, 5600, 8000, 11000]
+const STEP = 3000
 
 export function phaseAt(score) {
   let p = 0

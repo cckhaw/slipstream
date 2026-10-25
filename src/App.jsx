@@ -12,11 +12,10 @@ import Tutorial from './components/Tutorial.jsx'
 import ProfileSetup from './components/ProfileSetup.jsx'
 import WorldSelect from './components/WorldSelect.jsx'
 import Leaderboard from './components/Leaderboard.jsx'
-import { CloseIcon, Panel, Tag, TurnArrow } from './components/ui.jsx'
+import { Panel, Tag, TurnArrow } from './components/ui.jsx'
 
 const EMPTY_HUD = { score: 0, mult: 1, charge: 0, progress: 0 }
 const LAST_WORLD_KEY = 'lastWorld'
-const INTRO_MS = 5000 // how long the world intro stays up (a countdown bar shows the time left)
 
 export default function App() {
   const canvas2dRef = useRef(null)
@@ -43,11 +42,9 @@ export default function App() {
   const [best, setBest] = useState(0)
   const [result, setResult] = useState({ score: 0, isNewBest: false, rank: null })
   const [go, setGo] = useState(false)
-  const [intro, setIntro] = useState(null)
   const [popup, setPopup] = useState(null)
   const [toast, setToast] = useState(null)
   const [turn, setTurn] = useState(null)
-  const [sky, setSky] = useState(null)
 
   const screenRef = useRef(screen)
   screenRef.current = screen
@@ -77,8 +74,7 @@ export default function App() {
       timers.current.go = setTimeout(() => setGo(false), 1100)
     },
     popup: ({ text }) => flash(setPopup, text, 900, 'popup'),
-    turn: ({ kind }) => flash(setTurn, kind, 2400, 'turn'),
-    weather: (w) => flash(setSky, w, 2600, 'sky'),
+    turn: ({ kind, dir }) => flash(setTurn, { kind, dir, id: Date.now() }, 2400, 'turn'),
     gameover: async ({ score }) => {
       const w = getWorld(worldRef.current)
       const p = profileRef.current
@@ -97,13 +93,7 @@ export default function App() {
     await eng?.setWorld('neon') // calm 2D backdrop behind menus
     eng?.toIdle()
     setHud(EMPTY_HUD)
-    setIntro(null)
     setScreen('menu')
-  }, [])
-
-  const dismissIntro = useCallback(() => {
-    clearTimeout(timers.current.intro)
-    setIntro(null)
   }, [])
 
   const startTutorial = useCallback(async () => {
@@ -137,7 +127,6 @@ export default function App() {
       setHud(EMPTY_HUD)
       setBest(lb.bestFor(w.id, profileRef.current))
       setScreen('playing')
-      flash(setIntro, { ...w, id: `${w.id}-${Date.now()}` }, INTRO_MS, 'intro')
     },
     [flash],
   )
@@ -357,40 +346,13 @@ export default function App() {
         />
       )}
 
-      {/* World intro banner: translucent, with a countdown bar and a close button */}
-      {intro && screen === 'playing' && (
-        <div className="absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+172px)] flex justify-center px-safe">
-          <Panel className="animate-pop relative max-w-[330px] overflow-hidden !bg-none !bg-[#1B2440]/45 py-3 pl-4 pr-12 text-center backdrop-blur-sm [text-shadow:0_1px_3px_rgba(0,0,0,0.85)]" role="status">
-            <div className="title-pixel text-[18px] leading-none" style={{ textShadow: '0 2px 0 #3F5090, 0 4px 0 #05070C' }}>{intro.name}</div>
-            <p className="mt-2 text-[14px] leading-snug text-label-secondary">{intro.challenge}</p>
-            <button
-              type="button"
-              aria-label="Close world info"
-              onClick={dismissIntro}
-              className="chunk btn-dark absolute right-1.5 top-1.5 grid h-11 w-11 place-items-center !rounded-xl"
-            >
-              <CloseIcon />
-            </button>
-            <div className="absolute inset-x-0 bottom-0 h-[5px] bg-black/30" aria-hidden="true">
-              <div key={intro.id} className="h-full origin-left animate-shrink bg-orb" style={{ animationDuration: `${INTRO_MS}ms` }} />
-            </div>
-          </Panel>
-        </div>
-      )}
       {turn && screen === 'playing' && (
-        <div className="pointer-events-none absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+150px)] flex justify-center" role="status">
-          <div className="chunk btn-gold animate-pop flex items-center gap-2 px-4 py-2 font-display text-[17px] font-black">
-            {turn === 'left' && <><TurnArrow dir="left" /> Left turn</>}
-            {turn === 'right' && <>Right turn <TurnArrow dir="right" /></>}
-            {turn === 'uturn' && <><TurnArrow dir="uturn" /> U-turn ahead</>}
-          </div>
-        </div>
-      )}
-      {sky && screen === 'playing' && (
-        <div className="pointer-events-none absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+196px)] flex justify-center" role="status">
-          <div key={sky.id + sky.label} className="chunk btn-dark animate-pop flex items-center gap-2 px-4 py-2 font-display text-[17px] font-black">
-            <span aria-hidden="true">{sky.icon}</span> {sky.label}
-          </div>
+        <div
+          key={turn.id}
+          className={`pointer-events-none absolute inset-y-0 flex w-[40%] items-center text-white ${turn.dir < 0 ? 'left-0 justify-start pl-2' : 'right-0 justify-end pr-2'}`}
+          aria-hidden="true"
+        >
+          <TurnArrow dir={turn.kind === 'uturn' ? 'uturn' : turn.dir < 0 ? 'left' : 'right'} size={230} className="animate-pulse opacity-50 drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]" />
         </div>
       )}
       {popup && (
