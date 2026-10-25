@@ -1,35 +1,35 @@
 // Global leaderboard: one board per world, shared by every player.
 //
-// Storage is a Redis-compatible REST database (Upstash Redis, added from the Vercel
-// Marketplace; it injects KV_REST_API_URL / KV_REST_API_TOKEN or UPSTASH_REDIS_REST_*).
-//   lb:<world>   sorted set: player id -> best score
-//   lb:profiles  hash:       player id -> {"name","color"}
-// Only real players are stored here; the client pads boards with labelled bots.
+// Storage is Neon Postgres (free plan, added from the Vercel Marketplace; it injects
+// DATABASE_URL). Only real players are stored; the client pads boards with labelled bots.
+//   players(id, name, color)          one row per player
+//   scores(world, id, score, at)      the player's best score per world
 //
 //   GET  /api/leaderboard?world=voxel&id=<playerId>   -> board (+ the caller's rank)
 //   POST /api/leaderboard {world,id,name,color,score} -> records a best score, returns the board
 //        (omit score to only update the player's name / colour)
 
+import { neon } from '@neondatabase/serverless'
+
 const WORLDS = ['neon', 'quarry', 'ship', 'voxel', 'obby', 'grid']
 const MAX_SCORE = 5_000_000
 const TOP = 10
 
-const URL_ = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL
-const TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN
+const DB_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL
+const sql = DB_URL ? neon(DB_URL) : null
+let ready = null
 
-async function redis(commands) {
-  const res = await fetch(`${URL_}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(commands),
-  })
-  if (!res.ok) throw new Error(`redis ${res.status}`)
-  const out = await res.json()
-  return out.map((r) => {
-    if (r.error) throw new Error(r.error)
-    return r.result
-  })
-}
+const setup = () =>
+  (ready ??= (async () => {
+    await sql`CREATE TABLE IF NOT EXISTS players (id text PRIMARY KEY, name text NOT NULL, color text NOT NULL)`
+    await sql`CREATE TABLE IF NOT EXISTS scores (
+      world text NOT NULL, id text NOT NULL, score integer NOT NULL, at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (world, id))`
+    await sql`CREATE INDEX IF NOT EXISTS scores_rank ON scores (world, score DESC, at)`
+  })().catch((e) => {
+    ready = null
+    throw e
+  }))
 
 const cleanName = (raw) =>
   String(raw ?? '')
@@ -42,41 +42,23 @@ const validId = (id) => typeof id === 'string' && /^[\w-]{8,64}$/.test(id)
 const validColor = (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)
 
 async function board(world, id) {
-  const key = `lb:${world}`
-  const [flat, rank, score] = await redis([
-    ['ZREVRANGE', key, 0, TOP - 1, 'WITHSCORES'],
-    ['ZREVRANK', key, id || ''],
-    ['ZSCORE', key, id || ''],
+  const [top, me] = await Promise.all([
+    sql`SELECT s.id, p.name, p.color, s.score FROM scores s JOIN players p ON p.id = s.id
+        WHERE s.world = ${world} ORDER BY s.score DESC, s.at ASC LIMIT ${TOP}`,
+    id
+      ? sql`SELECT s.id, p.name, p.color, s.score,
+              (SELECT count(*)::int FROM scores o WHERE o.world = ${world} AND o.score > s.score) + 1 AS rank
+            FROM scores s JOIN players p ON p.id = s.id WHERE s.world = ${world} AND s.id = ${id}`
+      : [],
   ])
-  const ids = []
-  const scores = []
-  for (let i = 0; i < flat.length; i += 2) {
-    ids.push(flat[i])
-    scores.push(Number(flat[i + 1]))
-  }
-  const want = id && !ids.includes(id) && score !== null ? [...ids, id] : ids
-  const profiles = want.length ? (await redis([['HMGET', 'lb:profiles', ...want]]))[0] : []
-  const parse = (raw) => {
-    try {
-      return JSON.parse(raw) ?? {}
-    } catch {
-      return {}
-    }
-  }
-  const row = (pid, s, i) => {
-    const p = parse(profiles[i])
-    return { id: pid, name: p.name || 'Player', color: p.color || '#3D6BFF', score: s }
-  }
-  return {
-    top: ids.map((pid, i) => row(pid, scores[i], i)),
-    me: id && score !== null ? { ...row(id, Number(score), want.indexOf(id)), rank: rank + 1 } : null,
-  }
+  return { top, me: me[0] ?? null }
 }
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
-  if (!URL_ || !TOKEN) return res.status(503).json({ error: 'no-backend' })
+  if (!sql) return res.status(503).json({ error: 'no-backend' })
   try {
+    await setup()
     if (req.method === 'GET') {
       const { world, id } = req.query
       if (!WORLDS.includes(world)) return res.status(400).json({ error: 'bad-world' })
@@ -88,13 +70,16 @@ export default async function handler(req, res) {
       if (!WORLDS.includes(b.world) || !validId(b.id) || !name || !validColor(b.color)) {
         return res.status(400).json({ error: 'bad-request' })
       }
-      const cmds = [['HSET', 'lb:profiles', b.id, JSON.stringify({ name, color: b.color })]]
       const score = Math.floor(Number(b.score))
+      if (Number.isFinite(score) && score > MAX_SCORE) return res.status(400).json({ error: 'bad-score' })
+      await sql`INSERT INTO players (id, name, color) VALUES (${b.id}, ${name}, ${b.color})
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, color = EXCLUDED.color`
       if (Number.isFinite(score) && score > 0) {
-        if (score > MAX_SCORE) return res.status(400).json({ error: 'bad-score' })
-        cmds.push(['ZADD', `lb:${b.world}`, 'GT', score, b.id]) // keeps the player's best only
+        // Keeps the player's best only.
+        await sql`INSERT INTO scores (world, id, score) VALUES (${b.world}, ${b.id}, ${score})
+                  ON CONFLICT (world, id) DO UPDATE SET score = EXCLUDED.score, at = now()
+                  WHERE EXCLUDED.score > scores.score`
       }
-      await redis(cmds)
       return res.status(200).json(await board(b.world, b.id))
     }
     res.setHeader('Allow', 'GET, POST')

@@ -34,7 +34,7 @@ Every world has its own original background track, generated in the browser with
 ## Profile and leaderboards
 Players pick a name and colour once; the profile is stored in `localStorage` so returning players are recognised and never retype it. There is **one global Top 10 per world**, shared by every player, plus your own rank if you fall outside it. Boards are padded with clearly labelled `BOT` rivals; only real players' scores are published.
 
-Scores live in a Redis database behind `api/leaderboard.js` (a Vercel serverless function): a sorted set per world (`lb:<world>`, best score per player id) and a profile hash. It needs an Upstash Redis store connected to the Vercel project (Marketplace > Upstash Redis), which injects `KV_REST_API_URL` / `KV_REST_API_TOKEN`. Without it the API returns 503 and the game falls back to a device-local board. `src/lib/leaderboard.js` is the only client module that touches scores. Note that scores are reported by the client, so this is a casual board, not cheat-proof.
+Scores live in Neon Postgres (free plan, from the Vercel Marketplace) behind `api/leaderboard.js`, a Vercel serverless function: a `players` table and a `scores` table holding each player's best score per world; the tables are created on first use. The Neon integration injects `DATABASE_URL` into the Vercel project. Without it the API returns 503 and the game falls back to a device-local board. `src/lib/leaderboard.js` is the only client module that touches scores. Note that scores are reported by the client, so this is a casual board, not cheat-proof.
 
 ## Layout
 | Path | Purpose |
@@ -44,7 +44,7 @@ Scores live in a Redis database behind `api/leaderboard.js` (a Vercel serverless
 | `src/game/render3d.js` | three.js chase-cam renderer: voxel / obby / grid themes, curved track |
 | `src/game/track3d.js` | Track planner and path sampler for 3D turns |
 | `src/game/audio.js` | Synthesised sound effects (Web Audio) |
-| `api/leaderboard.js` | Global leaderboard endpoint (Redis-backed serverless function) |
+| `api/leaderboard.js` | Global leaderboard endpoint (Neon Postgres-backed serverless function) |
 | `src/lib/` | Storage, leaderboard + profile, colours |
 | `src/components/` | Chunky UI kit (`ui.jsx`), menus, world select, leaderboard, HUD, tutorial |
 | `tailwind.config.js` | Palette plus `chunk`, `panel`, `slot`, `title-outline`, `title-pixel` and `glass` utilities |
