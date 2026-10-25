@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { WORLDS } from '../game/worlds.js'
 import { view } from '../lib/leaderboard.js'
 import Avatar from './Avatar.jsx'
@@ -34,8 +34,16 @@ function Row({ rank, entry, isMe }) {
 }
 
 // Top 10 for a world, plus the player's own row (with rank) when they're outside it.
-export function Board({ worldId, profile, className = '' }) {
-  const v = useMemo(() => view(worldId, profile), [worldId, profile])
+export function Board({ worldId, profile, refresh, className = '' }) {
+  const [v, setV] = useState(null)
+  useEffect(() => {
+    let live = true
+    view(worldId, profile).then((r) => live && setV({ ...r, worldId }))
+    return () => {
+      live = false
+    }
+  }, [worldId, profile, refresh])
+  if (!v || v.worldId !== worldId) return <p className="px-2 py-6 text-center text-[14px] text-label-secondary" role="status">Loading scores…</p>
   return (
     <ol className={`flex flex-col gap-2 ${className}`} aria-label="Top 10">
       {v.top.map((e, i) => (
@@ -81,7 +89,7 @@ export default function Leaderboard({ worldId, profile, onSelectWorld, onBack })
       </div>
       <Board worldId={worldId} profile={profile} />
       <p className="mt-4 px-2 text-center text-[13px] leading-snug text-label-tertiary">
-        Scores are saved on this device. Rival bots fill the empty spots so there is always someone to beat.
+        One global board for every player. Rival bots fill the empty spots so there is always someone to beat.
       </p>
     </Page>
   )

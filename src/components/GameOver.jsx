@@ -15,7 +15,7 @@ export default function GameOver({ world, result, profile, onRetry, onWorlds, on
         </div>
 
         <div className="touch-pan-y mt-3 max-h-[34vh] overflow-y-auto rounded-xl pr-0.5">
-          <Board worldId={world.id} profile={profile} />
+          <Board worldId={world.id} profile={profile} refresh={result} />
         </div>
 
         <div className="mt-4 flex flex-col gap-3">
