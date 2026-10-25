@@ -73,7 +73,13 @@ export class Renderer2D {
     this.drawStreaks()
     this[`floor${K}`]()
     for (const o of e.obstacles) if (o.type === 'pit') this[`pit${K}`](o, e.rectOf(o))
-    for (const o of e.obstacles) if (o.type !== 'pit') this[`obs${K}`](o, e.rectOf(o))
+    for (const o of e.obstacles) {
+      if (o.type === 'pit') continue
+      if (o.type === 'float' || o.type === 'gate') this.obsAdv(o)
+      else this[`obs${K}`](o, e.rectOf(o))
+      if (o.rush) this.rushTrail(o)
+      if (o.blink) this.blinkGhost(o)
+    }
     this.drawGust()
     this.drawParticles()
     if (e.mode !== 'over') this.drawAvatar()
@@ -83,6 +89,65 @@ export class Renderer2D {
       ctx.fillStyle = `rgba(255,255,255,${e.flash * 0.35})`
       ctx.fillRect(0, 0, e.W, e.H)
     }
+  }
+
+  // ---- advanced obstacles (danger levels) ---------------------------------
+
+  // Floaters and moving gates: hazard-purple slabs with a glowing edge, in every theme.
+  obsAdv(o) {
+    const e = this.e
+    const { ctx } = this
+    const s = e.s
+    const base = { neon: '#B14CFF', quarry: '#5B3A8C', ship: '#7C5CFF' }[e.world.theme] ?? '#B14CFF'
+    const rects = e.rectsOf(o)
+    ctx.save()
+    ctx.shadowColor = '#E0B3FF'
+    ctx.shadowBlur = 12 * s
+    for (const rc of rects) {
+      if (rc.h <= 0.5) continue
+      block(ctx, rc.x, rc.y, rc.w, rc.h, base)
+    }
+    ctx.restore()
+    // Hazard stripes on the edges that matter, plus the gate's guide arrows.
+    ctx.fillStyle = '#FFD93D'
+    for (const rc of rects) {
+      if (rc.h <= 0.5) continue
+      const edgeY = o.type === 'gate' && rc === rects[0] ? rc.y + rc.h - 5 * s : o.type === 'gate' ? rc.y : rc.y + rc.h - 5 * s
+      for (let x = rc.x; x < rc.x + rc.w; x += 8 * s) ctx.fillRect(x, edgeY, 4 * s, 5 * s)
+    }
+  }
+
+  // Streak lines behind an obstacle that is closing in faster than the world scrolls.
+  rushTrail(o) {
+    const e = this.e
+    const { ctx } = this
+    const rc = e.rectOf(o)
+    ctx.save()
+    ctx.strokeStyle = 'rgba(255,140,40,0.75)'
+    ctx.lineWidth = 3 * e.s
+    ctx.lineCap = 'round'
+    for (let i = 0; i < 4; i++) {
+      const y = rc.y + (rc.h * (i + 0.5)) / 4
+      const len = (40 + 24 * ((i * 7 + Math.floor(e.clock * 20)) % 3)) * e.s
+      ctx.beginPath()
+      ctx.moveTo(rc.x + rc.w + 4 * e.s, y)
+      ctx.lineTo(rc.x + rc.w + 4 * e.s + len, y)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  // Dashed outline of a blinking laser at full height, so you can see where it will rise.
+  blinkGhost(o) {
+    const e = this.e
+    const { ctx } = this
+    const h = o.hu * e.s
+    ctx.save()
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'
+    ctx.setLineDash([6 * e.s, 5 * e.s])
+    ctx.lineWidth = 2 * e.s
+    ctx.strokeRect(o.x, e.floorTop - h, o.w, h)
+    ctx.restore()
   }
 
   // ---- shared pieces -------------------------------------------------------
