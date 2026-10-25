@@ -40,7 +40,9 @@ Score: 3,120 | Max: 4.7x
 ⚡ x3  ✨ x2  🟩 x7
 Can you beat my line? Play here: https://<host>/?seed=V7K3F9
 ```
-(achievements with a count of zero are left out of the share text). Sharing uses `navigator.share()` where it exists (phones), otherwise the clipboard (with a legacy fallback) and a 2.5 s "Copied to Clipboard!" state (`src/lib/share.ts`).
+(achievements with a count of zero are left out of the share text). Sharing uses `navigator.share()` where it exists (phones), otherwise the clipboard (with a legacy fallback) and a 2.5 s "Copied to Clipboard!" state (`src/lib/share.ts`). The native share passes the challenge link as `url` (and the rest as `text`) so the share sheet and chat apps show the site's icon and a link preview rather than a plain-text file; the page ships Open Graph tags and `public/og.png` (1200x630) for that. The clipboard copy is one block with the link at the end.
+
+The *Your run* tab is livelier: the world's accent glows behind a score that counts up, the multiplier is colour-coded (cyan, gold, pink) with a ten-segment meter, the three achievement chips pop in with their own colours and count up, a one-line verdict names the best thing about the run, the seed copies with a tap, and a personal best or podium finish fires a short confetti burst. Reduce Motion turns the animation off.
 
 **Seeds**: every run has a six-character seed. The first letter is the world (N Neon Conduit, Q Pixel Quarry, S Starship Drift, V Voxel Valley, O Obby Rush, G Neon Void), the rest is random. The same seed gives the same obstacle order (each spawn has its own seeded random stream) and the same turns on the 3D track. Opening `/?seed=V7K3F9` shows a "Challenge from a friend" card on the menu that starts that world with that seed. The seed fixes the course, not your pace: obstacle sizes still adapt to your multiplier, and the danger level is driven by your score. `src/lib/seed.js` has the generator, parser and PRNG.
 

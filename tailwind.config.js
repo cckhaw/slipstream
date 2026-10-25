@@ -66,6 +66,11 @@ export default {
           '100%': { transform: 'translateY(0) scale(1)', opacity: '1' },
         },
         fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+        confetti: {
+          '0%': { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: '1' },
+          '100%': { transform: 'translate(var(--dx),var(--dy)) rotate(var(--rot)) scale(0.8)', opacity: '0' },
+        },
+        shine: { '0%': { transform: 'translateX(-120%) skewX(-20deg)' }, '60%,100%': { transform: 'translateX(220%) skewX(-20deg)' } },
         shrink: { from: { transform: 'scaleX(1)' }, to: { transform: 'scaleX(0)' } },
         wiggle: {
           '0%,100%': { transform: 'rotate(-4deg)' },
@@ -89,6 +94,8 @@ export default {
         pop: 'pop 0.35s cubic-bezier(0.2,0.9,0.3,1.2) both',
         rise: 'rise 0.45s cubic-bezier(0.2,0.8,0.2,1) both',
         'fade-in': 'fadeIn 0.3s ease-out both',
+        confetti: 'confetti 1.5s cubic-bezier(0.1,0.7,0.3,1) forwards',
+        shine: 'shine 3.2s ease-in-out 1s infinite',
         'go-out': 'goOut 1.1s ease-out both',
         shrink: 'shrink 5s linear forwards',
         wiggle: 'wiggle 0.5s ease-in-out infinite',
