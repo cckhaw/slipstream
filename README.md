@@ -31,6 +31,11 @@ World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, 
 ## Music
 Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Each track is a 16-bar form (verse, lift, a bridge in a new chord progression, outro) with a lead melody, drum fills, risers and crashes, and gets brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
 
+## Weather and time of day
+As your score climbs the sky changes, in every 2D and 3D world: day, sunset, night (stars and a moon), cloudy, rain, thunderstorm with lightning, wind, fog and snow. Each world has its own cycle and themed names (Acid rain in Neon Conduit, Meteor shower and Ion storm in Starship Drift, Pixel rain in Neon Void...). The first change comes at 300 points, then at 700, 1,200, 1,800, 2,500, 3,400, 4,500 and 6,000, and every 1,500 after that; the order shifts on later laps. A banner announces each change and the sky eases over about four seconds. Rain, wind and thunder have synthesised sound. Weather is visual and audio only: it never changes physics or obstacles. Reduce Motion turns off lightning flashes.
+
+`src/game/weather.js` holds the thresholds, per-world cycles and drawing: a CSS `multiply` layer tints the scene and a transparent canvas on top draws the particles, so it works the same over the canvas and three.js renderers.
+
 ## Profile and leaderboards
 Players pick a name and colour once; the profile is stored in `localStorage` so returning players are recognised and never retype it. There is **one global Top 10 per world**, shared by every player, plus your own rank if you fall outside it. Boards are padded with clearly labelled `BOT` rivals; only real players' scores are published.
 
@@ -43,6 +48,7 @@ Scores live in Neon Postgres (free plan, from the Vercel Marketplace) behind `ap
 | `src/game/render2d.js` | Canvas renderer: neon / quarry / ship themes, orb / cube / Zip avatars |
 | `src/game/render3d.js` | three.js chase-cam renderer: voxel / obby / grid themes, curved track |
 | `src/game/track3d.js` | Track planner and path sampler for 3D turns |
+| `src/game/weather.js` | Weather / time-of-day director and overlay drawing (all worlds) |
 | `src/game/audio.js` | Synthesised sound effects (Web Audio) |
 | `api/leaderboard.js` | Global leaderboard endpoint (Neon Postgres-backed serverless function) |
 | `src/lib/` | Storage, leaderboard + profile, colours |

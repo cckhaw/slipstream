@@ -11,6 +11,7 @@
 import { COLORS } from './constants.js'
 import { getWorld } from './worlds.js'
 import { Renderer2D } from './render2d.js'
+import { Weather } from './weather.js'
 
 export { COLORS }
 
@@ -62,6 +63,7 @@ export class Engine {
     this.world = getWorld('neon')
     this.rules = this.world.rules
     this.r2d = new Renderer2D(this, this.canvas2d)
+    this.weather = new Weather(this, canvases.mul, canvases.fx)
     this.r3d = null
     this.renderer = this.r2d
 
@@ -105,6 +107,7 @@ export class Engine {
     this.canvas3d.style.display = w.kind === '3d' ? 'block' : 'none'
     this.resize()
     this.renderer.setWorld?.(w)
+    this.weather.setWorld(w)
   }
 
   // ---- layout --------------------------------------------------------------
@@ -123,6 +126,7 @@ export class Engine {
     this.orbX = w * 0.26
     this.r2d.resize(w, h, dpr)
     this.r3d?.resize(w, h, dpr)
+    this.weather.resize(w, h, dpr)
     this.hooks.onResize?.({ floorTop: this.floorTop, floorH: this.floorH, s: this.s, W: w, H: h })
   }
 
@@ -160,6 +164,7 @@ export class Engine {
     this.shake = 0
     this.flash = 0
     this.gust = { state: 'idle', timer: 4 }
+    this.weather?.reset()
   }
 
   toIdle() {
@@ -264,6 +269,7 @@ export class Engine {
     this.last = now
     this.update(dt)
     this.renderer.draw()
+    this.weather.draw()
     this.raf = requestAnimationFrame(this.frame)
   }
 
@@ -285,6 +291,7 @@ export class Engine {
       }
     } else if (this.mode === 'over') scale = 0.25
     const sdt = rawDt * scale
+    this.weather.update(rawDt, this.score, this.mode)
 
     // World speed eases toward the target set by the multiplier.
     let target = 0
