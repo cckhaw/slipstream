@@ -20,7 +20,7 @@ function Rank({ n }) {
 
 function Row({ rank, entry, isMe }) {
   return (
-    <li className={`slot flex items-center gap-3 px-3 py-1.5 ${isMe ? 'bg-[#2B2410] ring-[3px] ring-coin' : ''}`}>
+    <li data-me={isMe || undefined} className={`slot flex items-center gap-3 px-3 py-1.5 ${isMe ? 'bg-[#2B2410] ring-[3px] ring-coin' : ''}`}>
       <Rank n={rank} />
       <Avatar color={entry.color} size={30} />
       <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -31,6 +31,17 @@ function Row({ rank, entry, isMe }) {
       <span className="font-pixel text-[17px] font-black tabular-nums text-coin">{entry.score.toLocaleString()}</span>
     </li>
   )
+}
+
+// Scroll the nearest scrollable ancestor so `el` sits in the middle of it.
+function centerInScroller(el) {
+  let box = el.parentElement
+  while (box && !(box.scrollHeight > box.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) box = box.parentElement
+  if (!box) return
+  const b = box.getBoundingClientRect()
+  const r = el.getBoundingClientRect()
+  const top = box.scrollTop + (r.top - b.top) - (b.height - r.height) / 2
+  box.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
 }
 
 // Top 10 for a world, plus the player's own row (with rank) when they're outside it.
@@ -46,8 +57,16 @@ export function Board({ worldId, profile, data, className = '' }) {
     }
   }, [worldId, profile, data])
   const v = data ?? (fetched?.worldId === worldId ? fetched : instantView(worldId, profile))
+
+  // Phones only fit a few rows: keep the player's own row centred in view.
+  const list = useRef(null)
+  useEffect(() => {
+    const row = list.current?.querySelector('[data-me]')
+    if (row) centerInScroller(row)
+  }, [v, worldId])
+
   return (
-    <ol className={`flex flex-col gap-2 ${className}`} aria-label="Top 10">
+    <ol ref={list} className={`flex flex-col gap-2 ${className}`} aria-label="Top 10">
       {v.top.map((e, i) => (
         <Row key={e.id} rank={i + 1} entry={e} isMe={e.id === profile?.id} />
       ))}

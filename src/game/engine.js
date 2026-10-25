@@ -133,7 +133,12 @@ export class Engine {
     this.r = 14 * this.s
     this.floorH = 96 * this.s
     this.floorTop = h - this.floorH
-    this.orbX = w * 0.26
+    // Narrow 2D screens (phones) see far less of what is coming, so the world runs slower
+    // there (score is scaled back up, so boards stay fair), the avatar sits nearer the left
+    // edge and obstacles spawn earlier, giving the off-screen "!" markers time to be seen.
+    const narrow = this.world.kind !== '3d' && w < 560
+    this.vScale = narrow ? clamp(w / (this.s * 620), 0.72, 1) : 1
+    this.orbX = w * (narrow ? 0.2 : 0.26)
     this.r2d.resize(w, h, dpr)
     this.r3d?.resize(w, h, dpr)
     this.weather.resize(w, h, dpr)
@@ -308,7 +313,7 @@ export class Engine {
     let target = 0
     if (this.mode === 'idle') target = IDLE_SPEED * s
     else if (this.mode === 'playing' || this.mode === 'tutorial') {
-      target = (BASE_SPEED + SPEED_PER_MULT * (this.mult - 1)) * this.rules.speed * s * (1 + 0.025 * Math.min(this.tier, 8))
+      target = (BASE_SPEED + SPEED_PER_MULT * (this.mult - 1)) * this.rules.speed * s * this.vScale * (1 + 0.025 * Math.min(this.tier, 8))
     }
     this.speed += (target - this.speed) * Math.min(1, rawDt * 3)
 
@@ -328,7 +333,7 @@ export class Engine {
     }
 
     if (this.mode === 'playing') {
-      this.score += this.speed * sdt * 0.02 * this.mult
+      this.score += (this.speed * sdt * 0.02 * this.mult) / this.vScale
       this.updateTier()
       this.runTime += sdt
       this.updateGust(sdt)
@@ -588,7 +593,8 @@ export class Engine {
     const s = this.s
     const m = this.mult
     let type = this.pickType()
-    const x = this.W + Math.max(this.speed * this.rules.lead, 120 * s)
+    const lead = this.vScale < 1 ? Math.max(this.rules.lead, 1.0) : this.rules.lead
+    const x = this.W + Math.max(this.speed * lead, 120 * s)
     if (this.tier >= 1 && Math.random() < Math.min(0.6, 0.22 + 0.07 * (this.tier - 1))) {
       const kinds = TIER_KINDS(this.tier)
       return this.spawnAdvanced(kinds[Math.floor(Math.random() * kinds.length)], x)
