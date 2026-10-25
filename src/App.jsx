@@ -10,6 +10,7 @@ import PauseMenu from './components/PauseMenu.jsx'
 import GameOver from './components/GameOver.jsx'
 import Tutorial from './components/Tutorial.jsx'
 import ProfileSetup from './components/ProfileSetup.jsx'
+import InstallTip from './components/InstallTip.jsx'
 import WorldSelect from './components/WorldSelect.jsx'
 import Leaderboard from './components/Leaderboard.jsx'
 import { Panel, Tag, TurnArrow } from './components/ui.jsx'
@@ -304,9 +305,11 @@ export default function App() {
           onToggleMusic={toggleMusic}
         />
       )}
+      {screen === 'menu' && <InstallTip />}
       {screen === 'worlds' && (
         <WorldSelect
           profile={profile}
+          initialKind={getWorld(worldId).kind}
           onPlay={startRun}
           onBoard={(id) => {
             setLbWorld(id)
