@@ -21,6 +21,8 @@ const INTRO_MS = 5000 // how long the world intro stays up (a countdown bar show
 export default function App() {
   const canvas2dRef = useRef(null)
   const canvas3dRef = useRef(null)
+  const mulRef = useRef(null)
+  const fxRef = useRef(null)
   const engineRef = useRef(null)
   const pointers = useRef(new Set())
   const handlers = useRef({})
@@ -45,6 +47,7 @@ export default function App() {
   const [popup, setPopup] = useState(null)
   const [toast, setToast] = useState(null)
   const [turn, setTurn] = useState(null)
+  const [sky, setSky] = useState(null)
 
   const screenRef = useRef(screen)
   screenRef.current = screen
@@ -75,6 +78,7 @@ export default function App() {
     },
     popup: ({ text }) => flash(setPopup, text, 900, 'popup'),
     turn: ({ kind }) => flash(setTurn, kind, 2400, 'turn'),
+    weather: (w) => flash(setSky, w, 2600, 'sky'),
     gameover: async ({ score }) => {
       const w = getWorld(worldRef.current)
       const p = profileRef.current
@@ -186,7 +190,7 @@ export default function App() {
 
   useEffect(() => {
     const engine = new Engine(
-      { c2d: canvas2dRef.current, c3d: canvas3dRef.current },
+      { c2d: canvas2dRef.current, c3d: canvas3dRef.current, mul: mulRef.current, fx: fxRef.current },
       { audio, onEvent: (name, data) => handlers.current[name]?.(data), onResize: setMetrics },
     )
     engineRef.current = engine
@@ -259,6 +263,9 @@ export default function App() {
       <div className="absolute inset-0">
         <canvas ref={canvas2dRef} className="absolute inset-0 block h-full w-full" aria-label="Slipstream game field" />
         <canvas ref={canvas3dRef} className="absolute inset-0 hidden h-full w-full" aria-label="Slipstream 3D game field" />
+        {/* Weather: a multiply layer tints the scene, a transparent canvas draws rain, clouds, stars... */}
+        <div ref={mulRef} className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-1000" style={{ mixBlendMode: 'multiply' }} aria-hidden="true" />
+        <canvas ref={fxRef} className="pointer-events-none absolute inset-0 block h-full w-full" aria-hidden="true" />
       </div>
 
       {/* Full-screen input surface */}
@@ -376,6 +383,13 @@ export default function App() {
             {turn === 'left' && <><TurnArrow dir="left" /> Left turn</>}
             {turn === 'right' && <>Right turn <TurnArrow dir="right" /></>}
             {turn === 'uturn' && <><TurnArrow dir="uturn" /> U-turn ahead</>}
+          </div>
+        </div>
+      )}
+      {sky && screen === 'playing' && (
+        <div className="pointer-events-none absolute inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+196px)] flex justify-center" role="status">
+          <div key={sky.id + sky.label} className="chunk btn-dark animate-pop flex items-center gap-2 px-4 py-2 font-display text-[17px] font-black">
+            <span aria-hidden="true">{sky.icon}</span> {sky.label}
           </div>
         </div>
       )}

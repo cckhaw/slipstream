@@ -99,6 +99,45 @@ export class AudioEngine {
     this.rideOsc2.start()
   }
 
+  // Rain hiss and wind howl, each following its 0..1 amount. Called every frame (cheap).
+  ambience(rain, wind) {
+    if (!this.ctx) return
+    if (!this.rainGain) {
+      const c = this.ctx
+      const make = (type, freq, q) => {
+        const src = c.createBufferSource()
+        src.buffer = this.noise
+        src.loop = true
+        const f = c.createBiquadFilter()
+        f.type = type
+        f.frequency.value = freq
+        f.Q.value = q
+        const g = c.createGain()
+        g.gain.value = 0
+        src.connect(f)
+        f.connect(g)
+        g.connect(this.master)
+        src.start()
+        return { g, f }
+      }
+      const r = make('bandpass', 6000, 0.5)
+      this.rainGain = r.g
+      const w = make('bandpass', 420, 1.4)
+      this.windGain = w.g
+      this.windFilter = w.f
+    }
+    const t = this.ctx.currentTime
+    this.rainGain.gain.setTargetAtTime(rain * 0.16, t, 0.3)
+    this.windGain.gain.setTargetAtTime(wind * 0.22, t, 0.3)
+    this.windFilter.frequency.setTargetAtTime(380 + 260 * Math.sin(t * 0.6) + wind * 200, t, 0.2) // slow gusting
+  }
+
+  thunder() {
+    if (!this.ctx) return
+    const delay = 0.15 + Math.random() * 0.7
+    this.burst(1.6, { vol: 0.5, from: 220, to: 50, type: 'lowpass', q: 0.7, delay })
+  }
+
   ride(active, speed01) {
     if (!this.ctx) return
     const t = this.ctx.currentTime
@@ -128,10 +167,10 @@ export class AudioEngine {
     o.stop(t + dur + 0.02)
   }
 
-  burst(dur, { vol = 0.4, from = 800, to = 200, type = 'bandpass', q = 1 } = {}) {
+  burst(dur, { vol = 0.4, from = 800, to = 200, type = 'bandpass', q = 1, delay = 0 } = {}) {
     if (!this.ctx) return
     const c = this.ctx
-    const t = c.currentTime
+    const t = c.currentTime + delay
     const src = c.createBufferSource()
     src.buffer = this.noise
     const f = c.createBiquadFilter()
