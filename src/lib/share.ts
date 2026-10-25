@@ -34,16 +34,29 @@ export function buildSummary(events: readonly RunEvent[]): string {
     .join('  ')
 }
 
-export function buildShareText(opts: { score: number; maxMult: number; events: readonly RunEvent[]; seed: string; host?: string }): string {
+interface RunInfo {
+  score: number
+  maxMult: number
+  events: readonly RunEvent[]
+  seed: string
+  host?: string
+}
+
+// The pieces of a share: the text without its link, the challenge link, and both together.
+export function buildSharePayload(opts: RunInfo): { title: string; text: string; url: string; full: string } {
   const host = opts.host ?? (typeof window !== 'undefined' ? window.location.host : 'slipstream.khaw.cc')
   const summary = buildSummary(opts.events)
-  return [
+  const lines = [
     '⚡ SLIPSTREAM RUN',
     `Score: ${opts.score.toLocaleString('en-US')} | Max: ${opts.maxMult.toFixed(1)}x`,
     ...(summary ? [summary] : []),
-    `Can you beat my line? Play here: https://${host}/?seed=${opts.seed}`,
-  ].join('\n')
+  ]
+  const url = `https://${host}/?seed=${opts.seed}`
+  const ask = `Can you beat my line? Play here: ${url}`
+  return { title: 'Slipstream: beat my line', text: [...lines, 'Can you beat my line?'].join('\n'), url, full: [...lines, ask].join('\n') }
 }
+
+export const buildShareText = (opts: RunInfo): string => buildSharePayload(opts).full
 
 export type ShareResult = 'shared' | 'copied' | 'cancelled' | 'failed'
 
@@ -73,15 +86,18 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 // Native share sheet first (phones), then the clipboard. Closing the sheet is not an error.
-export async function shareText(text: string): Promise<ShareResult> {
+// The link goes in `url` (not just the text) so the share sheet and chat apps show the
+// site's icon and a link preview instead of a generic text file; the clipboard gets it all
+// in one block.
+export async function shareRun(p: { title: string; text: string; url: string; full: string }): Promise<ShareResult> {
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     try {
-      await navigator.share({ text })
+      await navigator.share({ title: p.title, text: p.text, url: p.url })
       return 'shared'
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return 'cancelled'
       // Share failed for another reason: fall back to copying.
     }
   }
-  return (await copyText(text)) ? 'copied' : 'failed'
+  return (await copyText(p.full)) ? 'copied' : 'failed'
 }
