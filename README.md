@@ -24,7 +24,7 @@ npm run build    # production bundle in dist/ (three.js is lazy-loaded for 3D wo
 | Obby Rush | 3D | Fast, pulsing bricks, frequent turns and U-turns |
 | Neon Void | 3D | Everything at once, at high speed, the most U-turns |
 
-3D worlds follow a curved road: `src/game/track3d.js` plans straights, left / right turns and U-turns (per-world mix in `worlds.js`), and the renderer bends the track, scenery, obstacles and camera along it. The jump gameplay is unchanged; a "turn ahead" cue appears in the HUD 30 units before each bend.
+3D worlds follow a curved road: `src/game/track3d.js` plans straights, left / right turns and U-turns (per-world mix in `worlds.js`), and the renderer bends the track, scenery, obstacles and camera along it. The jump gameplay is unchanged; a large translucent arrow appears on the side of the screen the road turns toward, 30 units before each bend.
 
 World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, moving barriers, gusts). Adding a world is one entry there plus a theme in `render2d.js` / `render3d.js`.
 
@@ -32,7 +32,7 @@ World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, 
 Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Each track is a 16-bar form (verse, lift, a bridge in a new chord progression, outro) with a lead melody, drum fills, risers and crashes, and gets brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
 
 ## Weather and time of day
-As your score climbs the sky changes, in every 2D and 3D world: day, sunset, night (stars and a moon), cloudy, rain, thunderstorm with lightning, wind, fog and snow. Each world has its own cycle and themed names (Acid rain in Neon Conduit, Meteor shower and Ion storm in Starship Drift, Pixel rain in Neon Void...). The first change comes at 300 points, then at 700, 1,200, 1,800, 2,500, 3,400, 4,500 and 6,000, and every 1,500 after that; the order shifts on later laps. A banner announces each change and the sky eases over about four seconds. Rain, wind and thunder have synthesised sound. Weather is visual and audio only: it never changes physics or obstacles. Reduce Motion turns off lightning flashes.
+As your score climbs the sky changes, in every 2D and 3D world: day, sunset, night (stars and a moon), cloudy, rain, thunderstorm with lightning, wind, fog and snow. Each world has its own cycle and themed names (Acid rain in Neon Conduit, Meteor shower and Ion storm in Starship Drift, Pixel rain in Neon Void...). The first change comes at 800 points, then at 2,000, 3,600, 5,600, 8,000 and 11,000, and every 3,000 after that; the order shifts on later laps. The sky eases over about four seconds, with no pop-up. Rain, wind and thunder have synthesised sound. Weather is visual and audio only: it never changes physics or obstacles. Reduce Motion turns off lightning flashes.
 
 `src/game/weather.js` holds the thresholds, per-world cycles and drawing: a CSS `multiply` layer tints the scene and a transparent canvas on top draws the particles, so it works the same over the canvas and three.js renderers.
 
