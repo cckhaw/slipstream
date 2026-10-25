@@ -108,6 +108,8 @@ export class Renderer2D {
       block(ctx, rc.x, rc.y, rc.w, rc.h, base)
     }
     ctx.restore()
+    const gapY = o.type === 'gate' ? rects[0].y + rects[0].h + (rects[1].y - rects[0].y - rects[0].h) / 2 : rects[0].y + rects[0].h / 2
+    this.warning(o, rects[0], '#E0B3FF', gapY)
     // Hazard stripes on the edges that matter, plus the gate's guide arrows.
     ctx.fillStyle = '#FFD93D'
     for (const rc of rects) {
@@ -493,16 +495,21 @@ export class Renderer2D {
 
   pitNeon(o, rc) {
     this.voidPit(rc, '#05070C', COLORS.slip)
+    this.warning(o, rc, COLORS.slip)
   }
 
   // Off-screen warning marker at the right edge (2D worlds).
-  warning(o, rc, col) {
+  // Off-screen "!" marker at the right edge for every obstacle that has not appeared yet. It
+  // swells and blinks faster as the obstacle closes in, sits at the height it will arrive at,
+  // and reads "!!" for rushers (which close in faster than the world scrolls).
+  warning(o, rc, col, y0) {
     const e = this.e
     const { ctx } = this
     const s = e.s
     if (o.x <= e.W - 4) return
-    const y = o.type === 'ceil' ? rc.h / 2 : o.type === 'pit' ? e.floorTop + 24 * s : rc.y + rc.h / 2
-    const sz = 15 * s * (0.9 + 0.2 * Math.sin(e.clock * 12))
+    const y = y0 ?? (o.type === 'ceil' ? rc.h / 2 : o.type === 'pit' ? e.floorTop + 24 * s : rc.y + rc.h / 2)
+    const near = clamp(1 - (o.x - e.W) / Math.max(1, e.speed * 1.2), 0, 1)
+    const sz = 15 * s * (1 + 0.25 * near) * (0.92 + 0.16 * Math.sin(e.clock * (10 + 14 * near)))
     const x = e.W - 26 * s
     ctx.save()
     ctx.fillStyle = col
@@ -520,7 +527,7 @@ export class Renderer2D {
     ctx.font = `800 ${Math.round(sz * 1.1)}px -apple-system, system-ui, sans-serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText('!', x, y + sz * 0.25)
+    ctx.fillText(o.rush ? '!!' : '!', x, y + sz * 0.25)
     ctx.restore()
   }
 
