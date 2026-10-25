@@ -12,6 +12,7 @@ import { COLORS } from './constants.js'
 import { getWorld } from './worlds.js'
 import { Renderer2D } from './render2d.js'
 import { Weather } from './weather.js'
+import { newSeed, rngFromSeed } from '../lib/seed.js'
 
 export { COLORS }
 
@@ -169,6 +170,12 @@ export class Engine {
     this.runTime = 0
     this.lastLevel = 1
     this.tier = 0
+    this.seed = null
+    this.spawnIndex = 0
+    this.rnd = Math.random
+    this.gustRnd = Math.random
+    this.events = [] // run telemetry: slipstream | near_miss | safe | crash
+    this.maxMult = 1
     this.overTimer = 0
     this.overSent = false
     this.releaseBuffer = 0
@@ -213,8 +220,11 @@ export class Engine {
     }
   }
 
-  startRun() {
+  // `seed` reproduces a course (same obstacle order, same turns); a new random one by default.
+  startRun(seed = newSeed(this.world.id)) {
     this.reset()
+    this.seed = seed
+    this.gustRnd = rngFromSeed(seed, 'gust')
     this.mode = 'playing'
     this.holding = false
     this.userPaused = false
@@ -335,13 +345,14 @@ export class Engine {
     if (this.mode === 'playing') {
       this.score += (this.speed * sdt * 0.02 * this.mult) / this.vScale
       this.updateTier()
+      this.maxMult = Math.max(this.maxMult, this.mult)
       this.runTime += sdt
       this.updateGust(sdt)
       this.spawnTimer -= sdt
       if (this.spawnTimer <= 0) {
         const extra = this.spawn() || 0
         const [a, b] = this.rules.gap
-        this.spawnTimer = (rand(a, b) - Math.min(0.25, this.runTime * 0.004)) * Math.max(0.7, 1 - 0.04 * this.tier) + extra
+        this.spawnTimer = (this.rand(a, b) - Math.min(0.25, this.runTime * 0.004)) * Math.max(0.7, 1 - 0.04 * this.tier) + extra
       }
       this.collide()
     } else if (this.mode === 'tutorial') {
@@ -350,7 +361,7 @@ export class Engine {
       this.overTimer -= rawDt
       if (this.overTimer <= 0 && !this.overSent) {
         this.overSent = true
-        this.emit('gameover', { score: Math.floor(this.score) })
+        this.emit('gameover', { score: Math.floor(this.score), maxMult: this.maxMult, events: this.events, seed: this.seed })
       }
     }
 
@@ -417,7 +428,7 @@ export class Engine {
       g.timer = 1.3
     } else {
       g.state = 'idle'
-      g.timer = rand(3.5, 6)
+      g.timer = 3.5 + this.gustRnd() * 2.5
     }
   }
 
@@ -463,6 +474,7 @@ export class Engine {
       this.audio?.tick(level)
       haptic(6)
       this.emit('level', level)
+      this.events.push('slipstream') // built up another multiplier level on the lane
     }
     this.lastLevel = level
   }
@@ -499,7 +511,12 @@ export class Engine {
 
   // ---- obstacles -----------------------------------------------------------
 
-  makeObstacle(type, x, heightUnits = 0, width = rand(16, 24) * this.s) {
+  // Obstacle randomness comes from the current spawn's seeded stream (this.rnd).
+  rand(a, b) {
+    return a + this.rnd() * (b - a)
+  }
+
+  makeObstacle(type, x, heightUnits = 0, width = this.rand(16, 24) * this.s) {
     return {
       type, // floor | wide | ceil | pit
       x,
@@ -507,9 +524,9 @@ export class Engine {
       hu: heightUnits,
       passed: false,
       minD: Infinity,
-      seed: Math.random() * TAU,
+      seed: this.rnd() * TAU,
       amp: 0, // oscillation amplitude (px units, scaled), 0 = static
-      freq: rand(2, 3.2),
+      freq: this.rand(2, 3.2),
     }
   }
 
@@ -524,9 +541,10 @@ export class Engine {
 
   pickType() {
     const { weights, after } = this.rules
-    const entries = Object.entries(weights).filter(([t]) => !after[t] || this.runTime >= after[t])
+    const courseTime = this.spawnIndex * 1.7 // by spawn count (not the clock) so a seed gives the same course to everyone
+    const entries = Object.entries(weights).filter(([t]) => !after[t] || courseTime >= after[t])
     let total = entries.reduce((a, [, w]) => a + w, 0)
-    let roll = Math.random() * total
+    let roll = this.rnd() * total
     for (const [t, w] of entries) {
       roll -= w
       if (roll <= 0) return t
@@ -550,39 +568,39 @@ export class Engine {
     const s = this.s
     const m = this.mult
     const air = ((2 * this.launchSpeed(Math.min(m, 3))) / (G_AIR * this.rules.gravity * s)) * this.speed // distance covered by a flat jump
-    const hu = () => Math.min(rand(46, 66) + (m - 1) * 2, 88)
+    const hu = () => Math.min(this.rand(46, 66) + (m - 1) * 2, 88)
     const push = (o) => (this.obstacles.push(o), o)
     switch (kind) {
       case 'rush': {
         // Closes in faster than the world scrolls. Only when nothing else is still ahead (no overlaps).
         if (this.obstacles.some((o) => o.x + o.w > this.orbX)) return this.spawnAdvanced('float', x)
-        push(this.makeObstacle('floor', x, hu())).rush = rand(0.45, 0.7)
+        push(this.makeObstacle('floor', x, hu())).rush = this.rand(0.45, 0.7)
         return 0
       }
       case 'float':
-        push(this.makeObstacle('float', x, rand(34, 50), rand(56, 92) * s))
+        push(this.makeObstacle('float', x, this.rand(34, 50), this.rand(56, 92) * s))
         return 0
       case 'blink': {
-        const o = push(this.makeObstacle('floor', x, rand(62, 84), rand(18, 24) * s))
-        o.blink = rand(1.5, 2.1)
+        const o = push(this.makeObstacle('floor', x, this.rand(62, 84), this.rand(18, 24) * s))
+        o.blink = this.rand(1.5, 2.1)
         return 0
       }
       case 'hurdles': {
         const gap = air * 1.3
-        for (let i = 0; i < 3; i++) push(this.makeObstacle('floor', x + i * gap, rand(44, 56), rand(16, 22) * s))
+        for (let i = 0; i < 3; i++) push(this.makeObstacle('floor', x + i * gap, this.rand(44, 56), this.rand(16, 22) * s))
         return (2 * gap) / Math.max(1, this.speed)
       }
       case 'gate': {
-        const o = push(this.makeObstacle('gate', x, 0, rand(20, 26) * s))
-        o.freq = rand(1.6, 2.2)
+        const o = push(this.makeObstacle('gate', x, 0, this.rand(20, 26) * s))
+        o.freq = this.rand(1.6, 2.2)
         return 0
       }
       case 'combo': {
         // A lava pit with a wall right after it: land, then jump again.
-        const w = clamp(rand(0.35, 0.55) * air, 56 * s, 170 * s)
+        const w = clamp(this.rand(0.35, 0.55) * air, 56 * s, 170 * s)
         push(this.makeObstacle('pit', x, 0, w))
         const d = 0.6 * air + 40 * s
-        push(this.makeObstacle('floor', x + w + d, hu(), rand(16, 22) * s))
+        push(this.makeObstacle('floor', x + w + d, hu(), this.rand(16, 22) * s))
         return (w + d) / Math.max(1, this.speed)
       }
     }
@@ -592,29 +610,30 @@ export class Engine {
   spawn() {
     const s = this.s
     const m = this.mult
+    this.rnd = rngFromSeed(this.seed ?? 'free', this.spawnIndex++) // one independent stream per spawn
     let type = this.pickType()
     const lead = this.vScale < 1 ? Math.max(this.rules.lead, 1.0) : this.rules.lead
     const x = this.W + Math.max(this.speed * lead, 120 * s)
-    if (this.tier >= 1 && Math.random() < Math.min(0.6, 0.22 + 0.07 * (this.tier - 1))) {
+    if (this.tier >= 1 && this.rnd() < Math.min(0.6, 0.22 + 0.07 * (this.tier - 1))) {
       const kinds = TIER_KINDS(this.tier)
-      return this.spawnAdvanced(kinds[Math.floor(Math.random() * kinds.length)], x)
+      return this.spawnAdvanced(kinds[Math.floor(this.rnd() * kinds.length)], x)
     }
     let hu = 0
     let w
     if (type === 'floor' || type === 'wide') {
-      hu = Math.min(rand(44, 70) + (m - 1) * 2.2, 92)
+      hu = Math.min(this.rand(44, 70) + (m - 1) * 2.2, 92)
       if (type === 'wide') {
         // A long wall: width limited to what a launch can actually clear.
         const reach = this.clearDistance(hu * s + this.r, Math.min(m, 3)) * 0.6
         if (reach < 90 * s) type = 'floor'
-        else w = clamp(rand(0.4, 1) * reach, 56 * s, 130 * s)
+        else w = clamp(this.rand(0.4, 1) * reach, 56 * s, 130 * s)
       }
     } else if (type === 'pit') {
       const air = ((2 * this.launchSpeed(Math.min(m, 3))) / (G_AIR * this.rules.gravity * this.s)) * this.speed
-      w = clamp(rand(0.35, 0.62) * air, 56 * s, 210 * s)
+      w = clamp(this.rand(0.35, 0.62) * air, 56 * s, 210 * s)
     }
     const o = this.makeObstacle(type, x, hu, w)
-    if ((type === 'floor' || type === 'ceil') && Math.random() < this.rules.moving) o.amp = rand(8, 16)
+    if ((type === 'floor' || type === 'ceil') && this.rnd() < this.rules.moving) o.amp = this.rand(8, 16)
     this.obstacles.push(o)
     return 0
   }
@@ -705,6 +724,7 @@ export class Engine {
 
   onPass(o) {
     const m = this.mult
+    this.events.push(o.minD < 11 * this.s ? 'near_miss' : 'safe')
     if (o.minD < 11 * this.s) {
       const bonus = Math.round(25 * m)
       this.score += bonus
@@ -720,6 +740,7 @@ export class Engine {
 
   crash(o) {
     this.killer = o?.type
+    this.events.push('crash')
     this.mode = 'over'
     this.holding = false
     this.overTimer = 0.9
