@@ -45,6 +45,7 @@ import { N as PATH_N, Path, S_MIN, STEP, TrackPlan } from './track3d.js'
 
 const TRACK_W = 3.6
 const CELL = 0.6
+const CEIL_TOP = 6.5 // visual top of ceiling blocks (collision still spans the full height)
 const SPAN = 140 // decor recycle length
 const MAX_PARTICLES = 500
 
@@ -542,13 +543,14 @@ export class Renderer3D {
 
     const ceil = o.type === 'ceil'
     const bottom0 = (e.r * 2 + 24 * e.s) / u
-    const hBase = ceil ? 9 - bottom0 : Math.max(0.5, (o.hu * e.s) / u)
+    const hBase = ceil ? CEIL_TOP - bottom0 : Math.max(0.5, (o.hu * e.s) / u)
     g.userData.hBase = hBase
     g.userData.bottom0 = bottom0
 
     if (this.theme === 'grid') {
       const col = ceil ? 0xff3b30 : 0xff9500
-      const box = new Mesh(new BoxGeometry(depth, hBase, TRACK_W), new MeshBasicMaterial({ color: col, transparent: true, opacity: 0.32 }))
+      const box = new Mesh(new BoxGeometry(depth, hBase, TRACK_W), new MeshBasicMaterial({ color: col, transparent: true, opacity: 0.32, depthWrite: false }))
+      if (ceil) g.userData.fade = [{ mat: box.material, base: 0.32, min: 0.12 }]
       box.position.y = ceil ? bottom0 + hBase / 2 : hBase / 2
       const edges = new LineSegments(new EdgesGeometry(box.geometry), new LineBasicMaterial({ color: col }))
       edges.position.copy(box.position)
@@ -562,17 +564,44 @@ export class Renderer3D {
     const cw = TRACK_W / cols
     const obbyPal = ['#FF4D4D', '#FFC83D', '#4DD2FF', '#7BD34F', '#B14CFF', '#FF8A1F']
     const stone = ['#7D7D7D', '#8E8E8E', '#6B6B6B']
+
+    // Ceiling blocks are see-through (and fade further as they pass the camera and the
+    // avatar) so they never hide the obstacles coming up behind them. The bottom row stays
+    // mostly solid so the hazard edge is easy to read.
+    const fadeMats = new Map()
+    const fadeMat = (col, edge) => {
+      const key = `${col}|${edge}`
+      let m = fadeMats.get(key)
+      if (!m) {
+        const base = edge ? 0.95 : 0.4
+        m = new MeshLambertMaterial({ color: col, transparent: true, opacity: base, depthWrite: false })
+        fadeMats.set(key, m)
+        g.userData.fade.push({ mat: m, base, min: edge ? 0.6 : 0.3 })
+      }
+      return m
+    }
+    if (ceil) {
+      g.userData.fade = []
+      const outline = new LineSegments(
+        new EdgesGeometry(new BoxGeometry(depth, hBase, TRACK_W)),
+        new LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 }),
+      )
+      outline.position.y = bottom0 + hBase / 2
+      g.add(outline)
+    }
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
+        const edge = ceil && r === rows - 1 // r = 0 is the top row of a ceiling block
         let col
         if (this.theme === 'voxel') {
-          if (ceil) col = r === 0 ? '#2A1A3D' : pick(stone)
+          if (ceil) col = edge ? '#3A2552' : pick(stone)
           else if (o.type === 'wide') col = pick(stone)
           else col = r % 2 === 0 ? '#D63A2F' : '#F5F0E6' // TNT stripes
         } else {
-          col = ceil ? pick(['#FF4D4D', '#FF8A1F']) : pick(obbyPal)
+          col = ceil ? (edge ? '#FF3B30' : pick(['#FF8A1F', '#FFC83D'])) : pick(obbyPal)
         }
-        const m = new Mesh(this.cube, this.mat(col))
+        const m = new Mesh(this.cube, ceil ? fadeMat(col, edge) : this.mat(col))
         m.scale.set(depth, ch * 0.98, cw * 0.98)
         const y = ceil ? bottom0 + ch * (rows - 1 - r + 0.5) : ch * (r + 0.5)
         m.position.set(0, y, -TRACK_W / 2 + cw * (c + 0.5))
@@ -605,6 +634,9 @@ export class Renderer3D {
         g.scale.y = Math.max(0.05, rc.h / u / g.userData.hBase)
       } else if (o.type === 'ceil') {
         g.position.y = (e.floorTop - rc.h) / u - g.userData.bottom0
+        // Fade out as it approaches the camera (s = -6.5) and passes over the avatar.
+        const fade = clamp((so + 6) / 18, 0, 1)
+        for (const f of g.userData.fade) f.mat.opacity = f.base * (f.min + (1 - f.min) * fade)
       } else {
         const l = g.userData.lava
         l.material.color.set(this.T.lava).multiplyScalar(0.8 + 0.2 * Math.sin(e.clock * 6 + o.seed))

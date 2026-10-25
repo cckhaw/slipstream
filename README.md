@@ -46,3 +46,6 @@ Players pick a name and colour once; the profile is stored in `localStorage` so 
 | `tailwind.config.js` | Palette plus `chunk`, `panel`, `slot`, `title-outline`, `title-pixel` and `glass` utilities |
 
 Append `?debug` to the URL to expose the engine as `window.__slipstream` for testing.
+
+## Deployment
+`vercel.json` skips Vercel builds for every branch except `main`, so pull requests do not create preview deployments; merging to `main` creates the production build. (`ignoreCommand` exits 0 to skip a build and 1 to build.)
