@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { WORLDS } from '../game/worlds.js'
+import * as store from '../lib/storage.js'
 import { bestFor } from '../lib/leaderboard.js'
 import WorldArt from './WorldArt.jsx'
 import { Button, CubeIcon, IconButton, Page, Panel, PlayIcon, TrophyIcon } from './ui.jsx'
@@ -47,23 +49,48 @@ function WorldCard({ world, best, onPlay, onBoard }) {
   )
 }
 
-export default function WorldSelect({ profile, onPlay, onBoard, onBack }) {
-  const groups = [
-    ['2D Worlds', WORLDS.filter((w) => w.kind === '2d')],
-    ['3D Worlds', WORLDS.filter((w) => w.kind === '3d')],
+const KIND_KEY = 'worldKind'
+
+// 2D and 3D side by side at the top: on a phone the 3D worlds would otherwise sit below the fold.
+export default function WorldSelect({ profile, initialKind = '2d', onPlay, onBoard, onBack }) {
+  const [kind, setKind] = useState(() => {
+    const saved = store.read(KIND_KEY)
+    return saved === '2d' || saved === '3d' ? saved : initialKind
+  })
+  const pick = (k) => {
+    setKind(k)
+    store.write(KIND_KEY, k)
+  }
+  const tabs = [
+    ['2d', '2D Worlds'],
+    ['3d', '3D Worlds'],
   ]
   return (
     <Page title="Choose a World" onBack={onBack}>
-      {groups.map(([label, list]) => (
-        <section key={label} className="mb-5">
-          <h2 className="mb-2 px-1 font-pixel text-[13px] font-black uppercase tracking-[0.16em] text-label-secondary">{label}</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {list.map((w) => (
-              <WorldCard key={w.id} world={w} best={bestFor(w.id, profile)} onPlay={() => onPlay(w.id)} onBoard={() => onBoard(w.id)} />
-            ))}
-          </div>
-        </section>
-      ))}
+      <div className="mb-4 grid grid-cols-2 gap-2" role="tablist" aria-label="World type">
+        {tabs.map(([k, label]) => {
+          const on = k === kind
+          return (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => pick(k)}
+              className={`chunk flex min-h-[52px] items-center justify-center gap-2 font-display text-[18px] font-black ${on ? 'btn-gold' : 'btn-dark'}`}
+            >
+              {k === '3d' && <CubeIcon size={18} />}
+              {label}
+              <span className="font-pixel text-[11px] opacity-70">{WORLDS.filter((w) => w.kind === k).length}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="tabpanel">
+        {WORLDS.filter((w) => w.kind === kind).map((w) => (
+          <WorldCard key={w.id} world={w} best={bestFor(w.id, profile)} onPlay={() => onPlay(w.id)} onBoard={() => onBoard(w.id)} />
+        ))}
+      </div>
     </Page>
   )
 }
