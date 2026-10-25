@@ -78,11 +78,15 @@ export default function App() {
     gameover: async ({ score }) => {
       const w = getWorld(worldRef.current)
       const p = profileRef.current
-      setResult({ score, isNewBest: false, rank: null })
+      // Show the result at once from what this device knows, then swap in the global board.
+      const local = p && score > 0 ? lb.recordScore(w.id, p, score) : null
+      setBest(local?.best ?? lb.bestFor(w.id, p))
+      setResult({ score, isNewBest: local?.isNewBest ?? false, rank: local?.rank ?? null, view: local ?? lb.instantView(w.id, p) })
       setScreen('over')
-      const r = p && score > 0 ? await lb.submitScore(w.id, p, score) : { isNewBest: false, rank: null, best: lb.bestFor(w.id, p) }
-      setBest(r.best ?? 0)
-      setResult({ score, isNewBest: r.isNewBest, rank: r.rank })
+      if (local) {
+        const v = await lb.syncScore(w.id, p)
+        setResult((r) => (r && r.score === score ? { ...r, rank: v.rank ?? r.rank, view: v } : r))
+      }
     },
   }
 
@@ -126,6 +130,7 @@ export default function App() {
       eng.startRun()
       setHud(EMPTY_HUD)
       setBest(lb.bestFor(w.id, profileRef.current))
+      lb.prefetch(w.id, profileRef.current) // warms the server and database before game over
       setScreen('playing')
     },
     [flash],

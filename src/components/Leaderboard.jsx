@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { WORLDS } from '../game/worlds.js'
-import { view } from '../lib/leaderboard.js'
+import { instantView, view } from '../lib/leaderboard.js'
 import Avatar from './Avatar.jsx'
 import { CubeIcon, Page, Tag } from './ui.jsx'
 
@@ -34,16 +34,18 @@ function Row({ rank, entry, isMe }) {
 }
 
 // Top 10 for a world, plus the player's own row (with rank) when they're outside it.
-export function Board({ worldId, profile, refresh, className = '' }) {
-  const [v, setV] = useState(null)
+export function Board({ worldId, profile, data, className = '' }) {
+  // Shows what this device already knows at once, then swaps in the fresh global board.
+  const [fetched, setFetched] = useState(null)
   useEffect(() => {
+    if (data) return undefined
     let live = true
-    view(worldId, profile).then((r) => live && setV({ ...r, worldId }))
+    view(worldId, profile).then((r) => live && setFetched({ ...r, worldId }))
     return () => {
       live = false
     }
-  }, [worldId, profile, refresh])
-  if (!v || v.worldId !== worldId) return <p className="px-2 py-6 text-center text-[14px] text-label-secondary" role="status">Loading scores…</p>
+  }, [worldId, profile, data])
+  const v = data ?? (fetched?.worldId === worldId ? fetched : instantView(worldId, profile))
   return (
     <ol className={`flex flex-col gap-2 ${className}`} aria-label="Top 10">
       {v.top.map((e, i) => (
