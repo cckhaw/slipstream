@@ -169,6 +169,7 @@ export class Engine {
     this.userPaused = false
     this.speed = IDLE_SPEED * this.s
     this.audio?.ride(false, 0)
+    this.audio?.stopMusic(0.5)
     this.pushHud()
   }
 
@@ -179,6 +180,7 @@ export class Engine {
     this.userPaused = false
     this.tut = { step: 0, hold: 0, t: 0, barrier: null }
     this.speed = BASE_SPEED * this.s
+    this.audio?.playMusic(this.world.id)
     this.emit('tutorial-step', 0)
     this.pushHud()
   }
@@ -196,6 +198,7 @@ export class Engine {
     this.holding = false
     this.userPaused = false
     this.speed = BASE_SPEED * this.rules.speed * this.s
+    this.audio?.playMusic(this.world.id)
     this.pushHud()
   }
 
@@ -217,6 +220,7 @@ export class Engine {
       this.holding = false
       this.audio?.ride(false, 0)
     }
+    this.audio?.duckMusic(v)
   }
 
   // ---- input ---------------------------------------------------------------
@@ -355,6 +359,7 @@ export class Engine {
       this.rideTimer = 0.08
       const on = this.grounded && this.holding && scale > 0 && this.mode !== 'over'
       this.audio?.ride(on, this.speed / (700 * s))
+      this.audio?.setMusicIntensity(this.mode === 'playing' ? this.charge : 0.25)
     }
 
     this.hudTimer -= rawDt
@@ -597,6 +602,7 @@ export class Engine {
     this.burstAt(this.orbX, this.y, 18, '#ffffff', { speed: 300 })
     this.audio?.crash()
     this.audio?.ride(false, 0)
+    this.audio?.stopMusic(1.6)
     haptic([30, 40, 60])
     this.emit('crashed')
   }

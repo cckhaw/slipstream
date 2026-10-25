@@ -1,10 +1,15 @@
 // Procedural sound design with the Web Audio API - no audio assets required.
 // The context is created lazily on the first user gesture (mobile autoplay rules).
 
+import { Music } from './music.js'
+
 export class AudioEngine {
-  constructor(muted = false) {
+  constructor(muted = false, musicOn = true) {
     this.ctx = null
     this.muted = muted
+    this.musicOn = musicOn
+    this.music = new Music()
+    this.wantMusic = null // world whose track should be playing
   }
 
   unlock() {
@@ -19,8 +24,44 @@ export class AudioEngine {
       comp.connect(this.ctx.destination)
       this.noise = this.makeNoise()
       this.buildRide()
+      this.music.init(this.ctx, this.master)
+      if (this.wantMusic && this.musicOn) this.music.start(this.wantMusic)
     }
     if (this.ctx.state === 'suspended') this.ctx.resume()
+  }
+
+  // ---- background music (one generated track per world) ----
+
+  playMusic(worldId) {
+    this.wantMusic = worldId
+    if (this.ctx && this.musicOn) this.music.start(worldId)
+  }
+
+  stopMusic(fade = 0.8) {
+    this.wantMusic = null
+    if (this.ctx) this.music.stop(fade)
+  }
+
+  setMusicOn(on) {
+    this.musicOn = on
+    if (!this.ctx) return
+    if (on && this.wantMusic) this.music.start(this.wantMusic)
+    else this.music.stop(0.3)
+  }
+
+  setMusicIntensity(x) {
+    if (this.ctx) this.music.setIntensity(x)
+  }
+
+  duckMusic(v) {
+    if (this.ctx) this.music.duck(v)
+  }
+
+  // Suspend all audio while the page is hidden.
+  suspend(v) {
+    if (!this.ctx) return
+    if (v) this.ctx.suspend()
+    else this.ctx.resume()
   }
 
   setMuted(m) {

@@ -1,6 +1,6 @@
-import { Button, IconButton, Panel, PlayIcon, SpeakerIcon } from './ui.jsx'
+import { Button, IconButton, MusicIcon, Panel, PlayIcon, SpeakerIcon } from './ui.jsx'
 
-export default function PauseMenu({ muted, onResume, onQuit, onToggleMute }) {
+export default function PauseMenu({ muted, musicOn, onResume, onQuit, onToggleMute, onToggleMusic }) {
   return (
     <div className="absolute inset-0 grid animate-fade-in place-items-center bg-black/45 px-safe backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Paused">
       <Panel className="animate-rise w-full max-w-[320px] p-5 text-center">
@@ -11,6 +11,9 @@ export default function PauseMenu({ muted, onResume, onQuit, onToggleMute }) {
             <Button variant="dark" size="md" onClick={onQuit}>Quit to Menu</Button>
             <IconButton label={muted ? 'Unmute sound' : 'Mute sound'} onClick={onToggleMute}>
               <SpeakerIcon off={muted} />
+            </IconButton>
+            <IconButton label={musicOn ? 'Turn music off' : 'Turn music on'} onClick={onToggleMusic}>
+              <MusicIcon off={!musicOn} />
             </IconButton>
           </div>
         </div>

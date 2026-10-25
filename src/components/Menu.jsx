@@ -1,8 +1,8 @@
 import Avatar from './Avatar.jsx'
-import { Button, IconButton, PencilIcon, PlayIcon, SpeakerIcon, TrophyIcon } from './ui.jsx'
+import { Button, IconButton, MusicIcon, PencilIcon, PlayIcon, SpeakerIcon, TrophyIcon } from './ui.jsx'
 import { Panel } from './ui.jsx'
 
-export default function Menu({ profile, muted, onPlay, onLeaderboard, onTutorial, onEditProfile, onToggleMute }) {
+export default function Menu({ profile, muted, musicOn, onPlay, onLeaderboard, onTutorial, onEditProfile, onToggleMute, onToggleMusic }) {
   return (
     <div className="absolute inset-0 grid animate-fade-in place-items-center overflow-y-auto px-safe pb-safe pt-safe">
       <div className="my-4 w-full max-w-[360px]">
@@ -36,6 +36,9 @@ export default function Menu({ profile, muted, onPlay, onLeaderboard, onTutorial
               <Button variant="dark" size="md" onClick={onTutorial}>How to Play</Button>
               <IconButton label={muted ? 'Unmute sound' : 'Mute sound'} onClick={onToggleMute}>
                 <SpeakerIcon off={muted} />
+              </IconButton>
+              <IconButton label={musicOn ? 'Turn music off' : 'Turn music on'} onClick={onToggleMusic}>
+                <MusicIcon off={!musicOn} />
               </IconButton>
             </div>
           </div>

@@ -66,6 +66,11 @@ export const PlayIcon = () => (
     <path d="M5 2.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.8l-12-7.5A1 1 0 0 0 5 2.5Z" />
   </svg>
 )
+export const CloseIcon = () => (
+  <I size={20} strokeWidth="3.4">
+    <path d="m6 6 12 12M18 6 6 18" />
+  </I>
+)
 export const BackIcon = () => (
   <I>
     <path d="m15 5-7 7 7 7" />
@@ -88,6 +93,14 @@ export const SpeakerIcon = ({ off }) => (
   <I size={22} strokeWidth="2.6">
     <path d="M11 5 6 9H3v6h3l5 4V5Z" fill="currentColor" />
     {off ? <path d="m16 9 5 6m0-6-5 6" /> : <><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" /></>}
+  </I>
+)
+export const MusicIcon = ({ off }) => (
+  <I size={22} strokeWidth="2.6">
+    <path d="M9 18V6l10-2v12" />
+    <circle cx="6.5" cy="18" r="2.5" fill="currentColor" />
+    <circle cx="16.5" cy="16" r="2.5" fill="currentColor" />
+    {off && <path d="m3 3 18 18" />}
   </I>
 )
 export const CubeIcon = ({ size = 14 }) => (
