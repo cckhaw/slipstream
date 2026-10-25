@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { buildMatrix, buildShareText, EMOJI, LEGEND, shareText, type RunEvent } from '../lib/share'
+import { ACHIEVEMENTS, buildShareText, countEvents, EMOJI, LABEL, shareText, type RunEvent } from '../lib/share'
 import { Board } from './Leaderboard.jsx'
 
 export interface RunResult {
@@ -60,10 +60,11 @@ function Metric({ label, children, className = '' }: { label: string; children: 
 
 export default function GameOverModal({ world, result, profile, onRetry, onWorlds, onMenu }: Props) {
   const [copied, setCopied] = useState(false)
+  const [tab, setTab] = useState<'run' | 'board'>('run')
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(timer.current), [])
 
-  const rows = buildMatrix(result.events)
+  const counts = countEvents(result.events)
 
   const handleShare = async () => {
     const text = buildShareText({ score: result.score, maxMult: result.maxMult, events: result.events, seed: result.seed })
@@ -94,6 +95,24 @@ export default function GameOverModal({ world, result, profile, onRetry, onWorld
           </div>
         </div>
 
+        {/* iOS-style segmented control: the leaderboard gets its own page instead of being squeezed in */}
+        <div className="mt-3 grid grid-cols-2 rounded-xl bg-white/10 p-[3px]" role="tablist" aria-label="Game over sections">
+          {([['run', 'Your run'], ['board', 'Leaderboard']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              onClick={() => setTab(k)}
+              className={`min-h-[34px] rounded-[10px] font-display text-[14px] font-semibold transition-colors ${tab === k ? 'bg-white/90 text-black shadow' : 'text-white/75'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'run' ? (
+          <div role="tabpanel">
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Metric label="Final score" className="col-span-2 text-center">
             <span className="font-display text-[44px] font-extrabold tabular-nums">{result.score.toLocaleString()}</span>
@@ -106,21 +125,15 @@ export default function GameOverModal({ world, result, profile, onRetry, onWorld
           </Metric>
         </div>
 
-        {/* Emoji matrix scorecard */}
-        <figure className="mt-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-center" aria-label={`Run line: ${rows.join(' ')}`}>
-          <div className="text-[22px] leading-[1.3] tracking-[0.05em]" aria-hidden="true">
-            {rows.map((r, i) => (
-              <div key={i}>{r}</div>
-            ))}
-          </div>
-          <figcaption className="mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-0.5 text-[11px] font-medium text-white/60">
-            {LEGEND.map(([k, label]) => (
-              <span key={k}>
-                {EMOJI[k]} {label}
-              </span>
-            ))}
-          </figcaption>
-        </figure>
+        {/* Scorecard: one count per achievement */}
+        <div className="mt-2 grid grid-cols-3 gap-2" role="list" aria-label="Run highlights">
+          {ACHIEVEMENTS.map((k) => (
+            <div key={k} role="listitem" aria-label={`${LABEL[k]}: ${counts[k]}`} className="rounded-2xl border border-white/10 bg-black/25 px-2 py-2.5 text-center">
+              <span className="text-[24px] leading-none" aria-hidden="true">{EMOJI[k]}</span>
+              <span className={`ml-1.5 font-display text-[22px] font-extrabold tabular-nums ${counts[k] ? 'text-white' : 'text-white/40'}`} aria-hidden="true">x{counts[k]}</span>
+            </div>
+          ))}
+        </div>
 
         <button
           type="button"
@@ -132,12 +145,14 @@ export default function GameOverModal({ world, result, profile, onRetry, onWorld
           {copied ? 'Copied to Clipboard!' : 'Challenge a friend'}
         </button>
 
-        <div className="mt-3">
-          <h3 className="mb-2 px-1 text-[12px] font-semibold uppercase tracking-[0.12em] text-white/60">Leaderboard</h3>
-          <div className="touch-pan-y max-h-[22dvh] min-h-[132px] overflow-y-auto rounded-xl pr-0.5">
-            <Board worldId={world.id} profile={profile} data={result.view} />
           </div>
-        </div>
+        ) : (
+          <div role="tabpanel" className="mt-3">
+            <div className="touch-pan-y max-h-[46dvh] min-h-[200px] overflow-y-auto overscroll-contain rounded-xl pr-0.5">
+              <Board worldId={world.id} profile={profile} data={result.view} />
+            </div>
+          </div>
+        )}
 
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button type="button" onClick={onRetry} className="col-span-2 min-h-[50px] rounded-[18px] bg-white font-display text-[17px] font-bold text-black active:scale-[0.98]">

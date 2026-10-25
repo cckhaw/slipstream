@@ -32,16 +32,15 @@ World rules live in `src/game/worlds.js` (gravity, launch, speed, obstacle mix, 
 Every world has its own original background track, generated in the browser with Web Audio (`src/game/music.js`, no audio files): synthwave for Neon Conduit, calm chiptune for Pixel Quarry, spacious ambient for Starship Drift, a warm plucked adventure theme for Voxel Valley, a bouncy lead for Obby Rush and a dark four-on-the-floor groove for Neon Void. Each track is a 16-bar form (verse, lift, a bridge in a new chord progression, outro) with a lead melody, drum fills, risers and crashes, and gets brighter and busier as your multiplier climbs, duck while paused and fade out on a crash. Music and sound effects have separate toggles (menu and pause screen).
 
 ## Share and challenge a run
-Game Over is an iOS-style glass sheet (`src/components/GameOverModal.tsx`) showing Final Score, Max Multiplier, the run's **Seed ID**, an emoji scorecard of the run and a one-tap **Challenge a friend** button. The scorecard maps telemetry in order: `⚡` slipstream (built another multiplier level on the lane), `✨` near miss, `🟩` clean pass, `💥` crash; long runs are squeezed into at most 24 cells (a near miss beats a slipstream beats a clean pass in each stretch). The share text is
+Game Over is an iOS-style glass sheet (`src/components/GameOverModal.tsx`) with two tabs: **Your run** (Final Score, Max Multiplier, the run's **Seed ID**, the scorecard and a one-tap **Challenge a friend** button) and **Leaderboard** (the full list, scrolled to your row). The scorecard is one count per achievement: `⚡ x3` slipstreams (built another multiplier level on the lane), `✨ x2` near misses, `🟩 x7` clean passes. A crash always ends the run, so it is not listed. The share text is
 
 ```
 ⚡ SLIPSTREAM RUN
 Score: 3,120 | Max: 4.7x
-⚡🟩🟩✨🟩⚡🟩
-🟩🟩✨⚡🟩💥
+⚡ x3  ✨ x2  🟩 x7
 Can you beat my line? Play here: https://<host>/?seed=V7K3F9
 ```
-Sharing uses `navigator.share()` where it exists (phones), otherwise the clipboard (with a legacy fallback) and a 2.5 s "Copied to Clipboard!" state (`src/lib/share.ts`).
+(achievements with a count of zero are left out of the share text). Sharing uses `navigator.share()` where it exists (phones), otherwise the clipboard (with a legacy fallback) and a 2.5 s "Copied to Clipboard!" state (`src/lib/share.ts`).
 
 **Seeds**: every run has a six-character seed. The first letter is the world (N Neon Conduit, Q Pixel Quarry, S Starship Drift, V Voxel Valley, O Obby Rush, G Neon Void), the rest is random. The same seed gives the same obstacle order (each spawn has its own seeded random stream) and the same turns on the 3D track. Opening `/?seed=V7K3F9` shows a "Challenge from a friend" card on the menu that starts that world with that seed. The seed fixes the course, not your pace: obstacle sizes still adapt to your multiplier, and the danger level is driven by your score. `src/lib/seed.js` has the generator, parser and PRNG.
 
