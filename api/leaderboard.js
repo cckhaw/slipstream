@@ -10,6 +10,7 @@
 //        (omit score to only update the player's name / colour)
 
 import { neon } from '@neondatabase/serverless'
+import { isNameAllowed } from '../src/lib/profanity.js'
 
 const WORLDS = ['neon', 'quarry', 'ship', 'voxel', 'obby', 'grid']
 const MAX_SCORE = 5_000_000
@@ -50,6 +51,9 @@ const cleanName = (raw) =>
     .trim()
     .slice(0, 12)
 
+// Names already stored that would not pass today's filter are shown as "Player".
+const masked = (row) => (isNameAllowed(row.name) ? row : { ...row, name: 'Player' })
+
 const validId = (id) => typeof id === 'string' && /^[\w-]{8,64}$/.test(id)
 const validColor = (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)
 
@@ -70,7 +74,7 @@ export default async function handler(req, res) {
       const { world, id } = req.query
       if (!WORLDS.includes(world)) return res.status(400).json({ error: 'bad-world' })
       const [top, me] = await run(() => [topQuery(world), meQuery(world, validId(id) ? id : '')])
-      return res.status(200).json({ top, me: me[0] ?? null })
+      return res.status(200).json({ top: top.map(masked), me: me[0] ? masked(me[0]) : null })
     }
     if (req.method === 'POST') {
       const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body ?? {}
@@ -78,6 +82,7 @@ export default async function handler(req, res) {
       if (!WORLDS.includes(b.world) || !validId(b.id) || !name || !validColor(b.color)) {
         return res.status(400).json({ error: 'bad-request' })
       }
+      if (!isNameAllowed(name)) return res.status(400).json({ error: 'bad-name' })
       const score = Math.floor(Number(b.score))
       if (Number.isFinite(score) && score > MAX_SCORE) return res.status(400).json({ error: 'bad-score' })
       const write = Number.isFinite(score) && score > 0
@@ -93,7 +98,7 @@ export default async function handler(req, res) {
         topQuery(b.world),
         meQuery(b.world, b.id),
       ])
-      return res.status(200).json({ top: out[2], me: out[3][0] ?? null })
+      return res.status(200).json({ top: out[2].map(masked), me: out[3][0] ? masked(out[3][0]) : null })
     }
     res.setHeader('Allow', 'GET, POST')
     return res.status(405).json({ error: 'method' })

@@ -6,6 +6,7 @@
 // Each board is padded with clearly-labelled rival bots so the Top 10 is never empty.
 import * as store from './storage.js'
 import { WORLDS } from '../game/worlds.js'
+import { isNameAllowed } from './profanity.js'
 
 const PROFILE_KEY = 'profile'
 const boardKey = (worldId) => `lb.${worldId}`
@@ -23,7 +24,8 @@ export function sanitizeName(raw) {
 export function loadProfile() {
   try {
     const p = JSON.parse(store.read(PROFILE_KEY, 'null'))
-    if (p && p.id && sanitizeName(p.name)) return p
+    // A saved name that fails the filter (saved before it existed) means choosing a new one.
+    if (p && p.id && sanitizeName(p.name) && isNameAllowed(p.name)) return p
   } catch {
     /* ignore */
   }
@@ -34,7 +36,8 @@ const uid = () => globalThis.crypto?.randomUUID?.() ?? `${Math.random().toString
 
 // Create or update the profile. Renames propagate to existing leaderboard rows.
 export function saveProfile({ name, color }, existing = null) {
-  const profile = { id: existing?.id ?? uid(), name: sanitizeName(name), color }
+  const clean = sanitizeName(name)
+  const profile = { id: existing?.id ?? uid(), name: isNameAllowed(clean) ? clean : 'Player', color }
   store.write(PROFILE_KEY, JSON.stringify(profile))
   push({ world: WORLDS[0].id, id: profile.id, name: profile.name, color: profile.color })
   for (const w of WORLDS) {
