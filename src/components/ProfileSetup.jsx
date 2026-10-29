@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { PLAYER_COLORS } from '../lib/colors.js'
 import { sanitizeName } from '../lib/leaderboard.js'
+import { isNameAllowed } from '../lib/profanity.js'
 import Avatar from './Avatar.jsx'
 import { Button, Panel } from './ui.jsx'
 
@@ -11,7 +12,8 @@ export default function ProfileSetup({ initial, onSave, onCancel }) {
   const [color, setColor] = useState(initial?.color ?? PLAYER_COLORS[5].hex)
   const [touched, setTouched] = useState(false)
   const clean = sanitizeName(name)
-  const valid = clean.length >= 2
+  const allowed = isNameAllowed(clean)
+  const valid = clean.length >= 2 && allowed
   const submit = (e) => {
     e.preventDefault()
     setTouched(true)
@@ -47,12 +49,12 @@ export default function ProfileSetup({ initial, onSave, onCancel }) {
             spellCheck={false}
             enterKeyHint="done"
             placeholder="Your name"
-            aria-invalid={touched && !valid}
+            aria-invalid={!allowed || (touched && !valid)}
             aria-describedby="name-hint"
             className="slot mt-1 h-[52px] w-full px-4 text-center font-display text-[20px] font-extrabold text-white placeholder:text-label-tertiary focus:outline-none focus:ring-[3px] focus:ring-orb"
           />
-          <p id="name-hint" className={`mt-1.5 h-5 text-[13px] ${touched && !valid ? 'text-danger' : 'text-label-tertiary'}`}>
-            {touched && !valid ? 'Pick a name with at least 2 characters.' : 'Up to 12 letters, numbers, spaces, _ or -'}
+          <p id="name-hint" role={allowed ? undefined : 'alert'} className={`mt-1.5 h-5 text-[13px] ${!allowed || (touched && !valid) ? 'text-danger' : 'text-label-tertiary'}`}>
+            {!allowed ? "That name isn't allowed. Please pick another." : touched && !valid ? 'Pick a name with at least 2 characters.' : 'Up to 12 letters, numbers, spaces, _ or -'}
           </p>
 
           <div role="radiogroup" aria-label="Colour" className="mt-2 grid grid-cols-5 justify-items-center gap-x-1 gap-y-2">
